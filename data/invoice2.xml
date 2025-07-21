@@ -1,0 +1,38 @@
+<?xml version="1.0" ?>
+<Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>开票任务单2</cbc:CustomizationID>
+  <cbc:ID>23902444</cbc:ID>
+  <cbc:IssueDate>2025-01-08</cbc:IssueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>CNY</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:Name>金蝶广州</cbc:Name>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:Name>金蝶广州</cbc:Name>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:OrderReference>
+    <cbc:ID>23902444</cbc:ID>
+  </cac:OrderReference>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="EA">1</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="CNY">600</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>住房</cbc:Name>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="CNY">600</cbc:PriceAmount>
+    </cac:Price>
+    <cbc:Note>发生时间: 2025-01-09</cbc:Note>
+  </cac:InvoiceLine>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="CNY">600</cbc:LineExtensionAmount>
+    <cbc:PayableAmount currencyID="CNY">600</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>

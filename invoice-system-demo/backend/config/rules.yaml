@@ -1,0 +1,186 @@
+# 字段补全规则配置
+field_completion_rules:
+  # 简单赋值示例
+  - id: "completion_001"
+    rule_name: "设置默认国家"
+    apply_to: ""  # 无条件应用
+    target_field: "country"
+    rule_expression: "'CN'"
+    priority: 100
+    active: true
+    
+  # 数据库查询补全示例
+  - id: "completion_002"
+    rule_name: "从数据库补全供应商税号"
+    apply_to: "!has(invoice.supplier.tax_no) || invoice.supplier.tax_no == ''"
+    target_field: "supplier.tax_no"
+    rule_expression: "db_query_tax_number_by_name(invoice.supplier.name)"
+    priority: 90
+    active: true
+    
+  - id: "completion_003"
+    rule_name: "从数据库补全客户税号"
+    apply_to: "!has(invoice.customer.tax_no) || invoice.customer.tax_no == ''"
+    target_field: "customer.tax_no"
+    rule_expression: "db_query_tax_number_by_name(invoice.customer.name)"
+    priority: 90
+    active: true
+    
+  # 根据企业分类从数据库获取税率
+  - id: "completion_004"
+    rule_name: "智能税率计算"
+    apply_to: "invoice.total_amount > 0"
+    target_field: "tax_amount"
+    rule_expression: "invoice.total_amount * db_query_tax_rate_by_category_and_amount(db_query_company_category_by_name(invoice.supplier.name), invoice.total_amount)"
+    priority: 80
+    active: true
+    
+  - id: "completion_005"
+    rule_name: "计算净额"
+    apply_to: ""  # 无条件应用，依赖税额计算
+    target_field: "net_amount"
+    rule_expression: "invoice.total_amount - invoice.tax_amount"
+    priority: 70
+    active: true
+    
+  # 从数据库获取企业分类
+  - id: "completion_006"
+    rule_name: "从数据库获取供应商分类"
+    apply_to: "!has(invoice.extensions.supplier_category)"
+    target_field: "extensions.supplier_category"
+    rule_expression: "db_query_company_category_by_name(invoice.supplier.name)"
+    priority: 60
+    active: true
+    
+  - id: "completion_007"
+    rule_name: "发票类型自动识别"
+    apply_to: "invoice.total_amount > 1000 && invoice.items.size() > 5"
+    target_field: "extensions.invoice_type"
+    rule_expression: "'BULK_ORDER'"
+    priority: 55
+    active: true
+    
+  # 数据库动态税率查询
+  - id: "completion_008"
+    rule_name: "动态税率查询"
+    apply_to: "has(invoice.extensions.supplier_category)"
+    target_field: "extensions.dynamic_tax_rate"
+    rule_expression: "db_query_tax_rate_by_category_and_amount(invoice.extensions.supplier_category, invoice.total_amount)"
+    priority: 50
+    active: true
+    
+  # CEL数组操作示例
+  - id: "completion_009"
+    rule_name: "计算商品总数量"
+    apply_to: "invoice.items.size() > 0"
+    target_field: "extensions.total_quantity"
+    rule_expression: "invoice.items.map(item, double(item.quantity)).reduce(sum, sum + _)"
+    priority: 45
+    active: false  # 复杂表达式示例，默认不启用
+
+# 字段校验规则配置
+field_validation_rules:
+  # 必填字段校验
+  - id: "validation_001"
+    rule_name: "发票号码必填"
+    apply_to: ""
+    field_path: "invoice_number"
+    rule_expression: "has(invoice.invoice_number) && invoice.invoice_number != ''"
+    error_message: "发票号码不能为空"
+    priority: 100
+    active: true
+    
+  - id: "validation_002"
+    rule_name: "供应商名称必填"
+    apply_to: ""
+    field_path: "supplier.name"
+    rule_expression: "has(invoice.supplier.name) && invoice.supplier.name != ''"
+    error_message: "供应商名称不能为空"
+    priority: 100
+    active: true
+    
+  # 金额校验
+  - id: "validation_003"
+    rule_name: "总金额必须大于0"
+    apply_to: ""
+    field_path: "total_amount"
+    rule_expression: "invoice.total_amount > 0"
+    error_message: "发票总金额必须大于0"
+    priority: 90
+    active: true
+    
+  # 大额发票校验（根据数据库中的税率配置动态调整阈值）
+  - id: "validation_004"
+    rule_name: "大额发票必须有税号"
+    apply_to: "invoice.total_amount > 5000"
+    field_path: "customer.tax_no"
+    rule_expression: "has(invoice.customer.tax_no) && invoice.customer.tax_no != ''"
+    error_message: "金额超过5000的发票，客户税号必填"
+    priority: 80
+    active: true
+    
+  # CEL高级校验规则
+  - id: "validation_005"
+    rule_name: "旅游服务发票项目校验"
+    apply_to: "has(invoice.extensions.supplier_category) && invoice.extensions.supplier_category == 'TRAVEL_SERVICE'"
+    field_path: "items"
+    rule_expression: "invoice.items.all(item, item.description.matches('^(住房|早餐|晚餐|停车费|交通费).*'))"
+    error_message: "旅游服务发票项目描述不规范，应包含：住房、餐饮、交通等标准服务项目"
+    priority: 75
+    active: true
+    
+  - id: "validation_006"
+    rule_name: "批量订单税额校验"
+    apply_to: "has(invoice.extensions.invoice_type) && invoice.extensions.invoice_type == 'BULK_ORDER' && has(invoice.tax_amount)"
+    field_path: "tax_amount"
+    rule_expression: "invoice.tax_amount >= invoice.total_amount * 0.05 && invoice.tax_amount <= invoice.total_amount * 0.13"
+    error_message: "批量订单税额异常，应在5%-13%范围内"
+    priority: 65
+    active: false  # 暂时禁用，税额为null时有问题
+    
+  - id: "validation_007"
+    rule_name: "供应商税号格式校验"
+    apply_to: "has(invoice.supplier.tax_no) && invoice.supplier.tax_no != '' && invoice.supplier.tax_no != null"
+    field_path: "supplier.tax_no"
+    rule_expression: "invoice.supplier.tax_no.matches('^[0-9]{15}[A-Z0-9]{3}$')"
+    error_message: "供应商税号格式错误，应为15位数字+3位字母数字组合"
+    priority: 85
+    active: true
+    
+  # 数据库验证规则 - 验证企业在数据库中是否存在
+  - id: "validation_011"
+    rule_name: "验证供应商在数据库中存在"
+    apply_to: "has(invoice.supplier.name) && invoice.supplier.name != ''"
+    field_path: "supplier.name"
+    rule_expression: "db_query_tax_number_by_name(invoice.supplier.name) != null"
+    error_message: "供应商在系统数据库中不存在，请先在数据管理中添加该企业"
+    priority: 75
+    active: false  # 默认禁用，演示时可启用
+    
+  # CEL高级验证规则
+  - id: "validation_008"
+    rule_name: "发票项目金额一致性校验"
+    apply_to: ""
+    field_path: "total_amount"
+    rule_expression: "abs(invoice.total_amount - invoice.items.map(item, double(item.amount)).reduce(sum, sum + _)) < 0.01"
+    error_message: "发票总金额与项目金额汇总不一致"
+    priority: 95
+    active: false  # 复杂计算示例，默认不启用
+    
+  - id: "validation_009"  
+    rule_name: "客户邮箱格式校验"
+    apply_to: "has(invoice.customer.email) && invoice.customer.email != ''"
+    field_path: "customer.email"
+    rule_expression: "invoice.customer.email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
+    error_message: "客户邮箱格式错误"
+    priority: 70
+    active: false  # 示例规则，默认不启用
+    
+  - id: "validation_010"
+    rule_name: "多条件复合校验"
+    apply_to: "invoice.total_amount > 1000"
+    field_path: "items"
+    rule_expression: "invoice.items.size() >= 1 && invoice.items.all(item, item.amount > 0 && item.quantity > 0 && item.description != '')"
+    error_message: "大额发票必须包含有效的项目明细：数量大于0，金额大于0，描述不为空"
+    priority: 60
+    active: false  # 暂时禁用，调试数组操作
