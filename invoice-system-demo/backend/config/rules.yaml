@@ -26,13 +26,30 @@ field_completion_rules:
     priority: 90
     active: true
     
-  # 根据企业分类从数据库获取税率
-  - id: "completion_004"
+  # 根据企业分类从数据库获取税率（分步计算）
+  - id: "completion_004a"
+    rule_name: "获取供应商分类"
+    apply_to: "!has(invoice.extensions.supplier_category)"
+    target_field: "extensions.supplier_category"
+    rule_expression: "db_query_company_category_by_name(invoice.supplier.name)"
+    priority: 85
+    active: true
+    
+  - id: "completion_004b"
     rule_name: "智能税率计算"
-    apply_to: "invoice.total_amount > 0"
+    apply_to: "invoice.total_amount > 0 && has(invoice.extensions.supplier_category)"
     target_field: "tax_amount"
-    rule_expression: "invoice.total_amount * db_query_tax_rate_by_category_and_amount(db_query_company_category_by_name(invoice.supplier.name), invoice.total_amount)"
+    rule_expression: "invoice.total_amount * db_query_tax_rate_by_category_and_amount(invoice.extensions.supplier_category, invoice.total_amount)"
     priority: 80
+    active: true
+    
+  # 备用税率计算（当数据库查询失败时）
+  - id: "completion_004c"
+    rule_name: "备用税率计算"
+    apply_to: "invoice.total_amount > 0 && !has(invoice.tax_amount)"
+    target_field: "tax_amount"
+    rule_expression: "invoice.total_amount * 0.06"
+    priority: 75
     active: true
     
   - id: "completion_005"
@@ -43,14 +60,6 @@ field_completion_rules:
     priority: 70
     active: true
     
-  # 从数据库获取企业分类
-  - id: "completion_006"
-    rule_name: "从数据库获取供应商分类"
-    apply_to: "!has(invoice.extensions.supplier_category)"
-    target_field: "extensions.supplier_category"
-    rule_expression: "db_query_company_category_by_name(invoice.supplier.name)"
-    priority: 60
-    active: true
     
   - id: "completion_007"
     rule_name: "发票类型自动识别"

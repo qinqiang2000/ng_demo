@@ -120,21 +120,39 @@ class DatabaseExpressionEvaluator:
             # 替换参数中的字段引用
             for i, param in enumerate(params):
                 if param.startswith('invoice.'):
-                    params[i] = self._get_field_value(param, context)
+                    field_value = self._get_field_value(param, context)
+                    if field_value is None:
+                        print(f"数据库查询参数为空: {param}")
+                        return None
+                    params[i] = field_value
             
             # 执行数据库查询
             if func_name == 'db_query_tax_number_by_name':
+                if params[0] is None or params[0] == '':
+                    return None
                 return await DatabaseQueryHelper.get_company_tax_number_by_name(
-                    self.db_session, params[0]
+                    self.db_session, str(params[0])
                 )
             elif func_name == 'db_query_tax_rate_by_category_and_amount':
-                return await DatabaseQueryHelper.get_tax_rate_by_category_and_amount(
-                    self.db_session, params[0], float(params[1])
-                )
+                if params[0] is None or params[0] == '':
+                    print(f"企业分类为空，使用默认税率")
+                    return 0.06  # 返回默认税率
+                try:
+                    amount = float(params[1])
+                    result = await DatabaseQueryHelper.get_tax_rate_by_category_and_amount(
+                        self.db_session, str(params[0]), amount
+                    )
+                    return result if result is not None else 0.06  # 默认税率
+                except (ValueError, TypeError):
+                    print(f"金额参数错误: {params[1]}")
+                    return 0.06
             elif func_name == 'db_query_company_category_by_name':
-                return await DatabaseQueryHelper.get_company_category_by_name(
-                    self.db_session, params[0]
+                if params[0] is None or params[0] == '':
+                    return 'GENERAL'  # 返回默认分类
+                result = await DatabaseQueryHelper.get_company_category_by_name(
+                    self.db_session, str(params[0])
                 )
+                return result if result is not None else 'GENERAL'  # 默认分类
             
         except Exception as e:
             print(f"数据库查询错误: {expression} - {str(e)}")
