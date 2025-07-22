@@ -20,10 +20,14 @@ class KDUBLDomainConverter:
         doc = etree.fromstring(kdubl_xml.encode('utf-8'))
         
         # 提取基础信息
-        invoice_number = self._extract_text(doc, './/cbc:ID')
+        invoice_number = self._extract_text(doc, './/cbc:ID') or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         issue_date_str = self._extract_text(doc, './/cbc:IssueDate')
-        issue_date = datetime.strptime(issue_date_str, '%Y-%m-%d').date()
-        invoice_type = self._extract_text(doc, './/cbc:InvoiceTypeCode')
+        if issue_date_str:
+            issue_date = datetime.strptime(issue_date_str, '%Y-%m-%d').date()
+        else:
+            # 如果没有找到日期，使用今天的日期作为默认值
+            issue_date = datetime.now().date()
+        invoice_type = self._extract_text(doc, './/cbc:InvoiceTypeCode') or "STANDARD"
         
         # 提取参与方信息
         supplier = self._extract_party(doc, './/cac:AccountingSupplierParty')

@@ -7,7 +7,7 @@ from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule, FieldValidationRule
 from ..core.kdubl_converter import KDUBLDomainConverter
 from ..core.rule_engine import FieldCompletionEngine, BusinessValidationEngine
-from ..core.database_rule_engine import DatabaseFieldCompletionEngine, DatabaseBusinessValidationEngine
+from ..core.cel_engine import DatabaseCELFieldCompletionEngine, DatabaseCELBusinessValidationEngine
 
 
 class InvoiceProcessingService:
@@ -17,10 +17,10 @@ class InvoiceProcessingService:
         self.converter = KDUBLDomainConverter()
         self.db_session = db_session
         
-        # 如果有数据库会话，使用支持数据库查询的引擎
+        # 如果有数据库会话，使用支持数据库查询的CEL引擎
         if db_session:
-            self.completion_engine = DatabaseFieldCompletionEngine(db_session)
-            self.validation_engine = DatabaseBusinessValidationEngine(db_session)
+            self.completion_engine = DatabaseCELFieldCompletionEngine(db_session)
+            self.validation_engine = DatabaseCELBusinessValidationEngine(db_session)
         else:
             self.completion_engine = FieldCompletionEngine()
             self.validation_engine = BusinessValidationEngine()
@@ -73,7 +73,7 @@ class InvoiceProcessingService:
             # 2. 数据补全
             result["steps"].append("执行数据补全规则")
             if self.db_session:
-                domain = await self.completion_engine.complete(domain)
+                domain = await self.completion_engine.complete_async(domain)
             else:
                 domain = self.completion_engine.complete(domain)
             # 收集补全执行日志
@@ -83,7 +83,7 @@ class InvoiceProcessingService:
             # 3. 业务校验
             result["steps"].append("执行业务校验规则")
             if self.db_session:
-                is_valid, errors = await self.validation_engine.validate(domain)
+                is_valid, errors = await self.validation_engine.validate_async(domain)
             else:
                 is_valid, errors = self.validation_engine.validate(domain)
             # 收集校验执行日志

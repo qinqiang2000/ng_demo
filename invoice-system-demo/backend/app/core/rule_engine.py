@@ -81,6 +81,20 @@ class SimpleExpressionEvaluator:
                 parts = expression.split(f' {op_str} ', 1)
                 left = self.evaluate(parts[0].strip(), context)
                 right = self.evaluate(parts[1].strip(), context)
+                
+                # 处理None值比较
+                if left is None or right is None:
+                    if op_str == '==':
+                        return left == right
+                    elif op_str == '!=':
+                        return left != right
+                    elif op_str in ['>', '>=', '<', '<=']:
+                        return False  # None值的数值比较返回False
+                    elif op_str == 'AND':
+                        return False  # None在逻辑运算中视为False
+                    elif op_str == 'OR':
+                        return left or right
+                
                 return op_func(left, right)
         
         # 处理简单变量
@@ -94,7 +108,13 @@ class SimpleExpressionEvaluator:
         """检查字段是否存在"""
         try:
             value = self._get_field_value(field_path, context)
-            return value is not None
+            if value is None:
+                return False
+            if isinstance(value, str) and value == "":
+                return False
+            if isinstance(value, (int, float, Decimal)) and value == 0:
+                return False  # 数值0也视为不存在
+            return True
         except:
             return False
     
@@ -145,6 +165,7 @@ class FieldCompletionEngine:
     def __init__(self):
         self.evaluator = SimpleExpressionEvaluator()
         self.rules: List[FieldCompletionRule] = []
+        self.execution_log: List[Dict] = []
     
     def load_rules(self, rules: List[FieldCompletionRule]):
         """加载规则"""
@@ -153,6 +174,7 @@ class FieldCompletionEngine:
     def complete(self, domain: InvoiceDomainObject) -> InvoiceDomainObject:
         """执行字段补全"""
         context = {'invoice': domain}
+        self.execution_log = []  # 重置执行日志
         
         for rule in self.rules:
             if not rule.active:
@@ -169,9 +191,23 @@ class FieldCompletionEngine:
                 # 设置字段值
                 if field_value is not None:
                     self.evaluator._set_field_value(domain, rule.target_field, field_value)
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "target_field": rule.target_field,
+                        "value": str(field_value),
+                        "status": "success"
+                    }
+                    self.execution_log.append(log_entry)
                     print(f"字段补全成功: {rule.rule_name} - {rule.target_field} = {field_value}")
                     
             except Exception as e:
+                log_entry = {
+                    "rule_name": rule.rule_name,
+                    "target_field": rule.target_field,
+                    "error_message": str(e),
+                    "status": "error"
+                }
+                self.execution_log.append(log_entry)
                 print(f"字段补全失败: {rule.rule_name} - {str(e)}")
         
         return domain
@@ -183,6 +219,7 @@ class BusinessValidationEngine:
     def __init__(self):
         self.evaluator = SimpleExpressionEvaluator()
         self.rules: List[FieldValidationRule] = []
+        self.execution_log: List[Dict] = []
     
     def load_rules(self, rules: List[FieldValidationRule]):
         """加载规则"""
@@ -192,6 +229,7 @@ class BusinessValidationEngine:
         """执行业务校验"""
         context = {'invoice': domain}
         errors = []
+        self.execution_log = []  # 重置执行日志
         
         for rule in self.rules:
             if not rule.active:
@@ -206,12 +244,29 @@ class BusinessValidationEngine:
                 is_valid = self.evaluator.evaluate(rule.rule_expression, context)
                 
                 if not is_valid:
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "error_message": rule.error_message,
+                        "status": "failed"
+                    }
+                    self.execution_log.append(log_entry)
                     errors.append(f"{rule.rule_name}: {rule.error_message}")
                     print(f"校验失败: {rule.rule_name} - {rule.error_message}")
                 else:
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "status": "passed"
+                    }
+                    self.execution_log.append(log_entry)
                     print(f"校验通过: {rule.rule_name}")
                     
             except Exception as e:
+                log_entry = {
+                    "rule_name": rule.rule_name,
+                    "error_message": f"规则执行错误 - {str(e)}",
+                    "status": "error"
+                }
+                self.execution_log.append(log_entry)
                 errors.append(f"{rule.rule_name}: 规则执行错误 - {str(e)}")
                 print(f"校验错误: {rule.rule_name} - {str(e)}")
         

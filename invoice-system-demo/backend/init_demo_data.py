@@ -32,10 +32,18 @@ async def init_demo_data():
                 ),
                 CompanyCreate(
                     name="携程计算机技术（上海）有限公司",
-                    tax_number="91310000133297287H",
+                    tax_number="913100001332972H87",
                     address="上海市长宁区金钟路968号15楼",
                     phone="021-34064880",
                     email="service@ctrip.com",
+                    category="TRAVEL_SERVICE"
+                ),
+                CompanyCreate(
+                    name="携程广州",
+                    tax_number="913100001332972H77",
+                    address="广州市天河区珠江新城金穗路62号",
+                    phone="020-38888888",
+                    email="guangzhou@ctrip.com",
                     category="TRAVEL_SERVICE"
                 ),
                 CompanyCreate(

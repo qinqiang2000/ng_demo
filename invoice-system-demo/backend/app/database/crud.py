@@ -54,7 +54,7 @@ class CompanyCRUD:
     @staticmethod
     async def create(db: AsyncSession, company: CompanyCreate) -> Company:
         """创建企业"""
-        db_company = Company(**company.dict())
+        db_company = Company(**company.model_dump())
         db.add(db_company)
         await db.commit()
         await db.refresh(db_company)
@@ -71,6 +71,14 @@ class CompanyCRUD:
         """根据税号获取企业"""
         result = await db.execute(
             select(Company).where(Company.tax_number == tax_number)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> Optional[Company]:
+        """根据名称获取企业"""
+        result = await db.execute(
+            select(Company).where(Company.name == name)
         )
         return result.scalar_one_or_none()
     
@@ -141,7 +149,7 @@ class TaxRateCRUD:
     @staticmethod
     async def create(db: AsyncSession, tax_rate: TaxRateCreate) -> TaxRate:
         """创建税率配置"""
-        db_tax_rate = TaxRate(**tax_rate.dict())
+        db_tax_rate = TaxRate(**tax_rate.model_dump())
         db.add(db_tax_rate)
         await db.commit()
         await db.refresh(db_tax_rate)
@@ -229,9 +237,21 @@ class DatabaseQueryHelper:
     @staticmethod
     async def get_company_tax_number_by_name(db: AsyncSession, company_name: str) -> Optional[str]:
         """根据公司名称获取税号"""
+        print(f"[DEBUG] 查询企业税号: {company_name}")
+        
+        # 首先尝试精确匹配
+        company = await CompanyCRUD.get_by_name(db, company_name)
+        if company:
+            print(f"[DEBUG] 精确匹配找到企业: {company.name}, 税号: {company.tax_number}")
+            return company.tax_number
+        
+        # 如果精确匹配失败，尝试模糊匹配
         companies = await CompanyCRUD.get_by_name_pattern(db, company_name)
         if companies:
+            print(f"[DEBUG] 模糊匹配找到企业: {companies[0].name}, 税号: {companies[0].tax_number}")
             return companies[0].tax_number
+        
+        print(f"[DEBUG] 未找到企业: {company_name}")
         return None
     
     @staticmethod

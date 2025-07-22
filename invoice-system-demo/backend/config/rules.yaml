@@ -12,7 +12,7 @@ field_completion_rules:
   # 数据库查询补全示例
   - id: "completion_002"
     rule_name: "从数据库补全供应商税号"
-    apply_to: "!has(invoice.supplier.tax_no) || invoice.supplier.tax_no == ''"
+    apply_to: "invoice.supplier.tax_no == null"
     target_field: "supplier.tax_no"
     rule_expression: "db_query_tax_number_by_name(invoice.supplier.name)"
     priority: 90

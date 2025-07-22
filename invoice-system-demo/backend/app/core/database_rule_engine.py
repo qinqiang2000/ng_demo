@@ -31,6 +31,7 @@ class DatabaseExpressionEvaluator:
     async def evaluate(self, expression: str, context: Dict[str, Any]) -> Any:
         """计算表达式"""
         expression = expression.strip()
+        print(f"[DEBUG] 求值表达式: '{expression}'")
         
         # 处理数据库查询函数
         if expression.startswith('db_query_'):
@@ -56,10 +57,20 @@ class DatabaseExpressionEvaluator:
         if expression.lower() == 'false':
             return False
         
+        # 处理取反操作
+        if expression.startswith('!'):
+            inner_expression = expression[1:].strip()
+            inner_result = await self.evaluate(inner_expression, context)
+            result = not inner_result
+            print(f"[DEBUG] !({inner_expression}) = {result} (inner: {inner_result})")
+            return result
+        
         # 处理has()函数
         if expression.startswith('has(') and expression.endswith(')'):
             field_path = expression[4:-1].strip()
-            return self._has_field(field_path, context)
+            result = self._has_field(field_path, context)
+            print(f"[DEBUG] has({field_path}) = {result}")
+            return result
         
         # 处理contains()函数 
         if '.contains(' in expression:
@@ -97,6 +108,20 @@ class DatabaseExpressionEvaluator:
                 parts = expression.split(f' {op_str} ', 1)
                 left = await self.evaluate(parts[0].strip(), context)
                 right = await self.evaluate(parts[1].strip(), context)
+                
+                # 处理None值比较
+                if left is None or right is None:
+                    if op_str == '==':
+                        return left == right
+                    elif op_str == '!=':
+                        return left != right
+                    elif op_str in ['>', '>=', '<', '<=']:
+                        return False  # None值的数值比较返回False
+                    elif op_str == 'AND':
+                        return False  # None在逻辑运算中视为False
+                    elif op_str == 'OR':
+                        return left or right
+                
                 return op_func(left, right)
         
         # 处理简单变量
@@ -108,7 +133,10 @@ class DatabaseExpressionEvaluator:
     
     async def _handle_db_query(self, expression: str, context: Dict[str, Any]) -> Any:
         """处理数据库查询函数"""
+        print(f"[DEBUG] 处理数据库查询: {expression}")
+        
         if not self.db_session:
+            print(f"[DEBUG] 数据库会话为空")
             return None
         
         try:
@@ -117,22 +145,31 @@ class DatabaseExpressionEvaluator:
             params_str = expression[expression.index('(') + 1:expression.rindex(')')]
             params = [p.strip().strip('"\'') for p in params_str.split(',')]
             
+            print(f"[DEBUG] 函数名: {func_name}, 原始参数: {params}")
+            
             # 替换参数中的字段引用
             for i, param in enumerate(params):
                 if param.startswith('invoice.'):
                     field_value = self._get_field_value(param, context)
+                    print(f"[DEBUG] 字段 {param} 的值: {field_value}")
                     if field_value is None:
-                        print(f"数据库查询参数为空: {param}")
+                        print(f"[DEBUG] 数据库查询参数为空: {param}")
                         return None
                     params[i] = field_value
+            
+            print(f"[DEBUG] 处理后的参数: {params}")
             
             # 执行数据库查询
             if func_name == 'db_query_tax_number_by_name':
                 if params[0] is None or params[0] == '':
+                    print(f"[DEBUG] 企业名称为空，跳过查询")
                     return None
-                return await DatabaseQueryHelper.get_company_tax_number_by_name(
+                
+                result = await DatabaseQueryHelper.get_company_tax_number_by_name(
                     self.db_session, str(params[0])
                 )
+                print(f"[DEBUG] 税号查询结果: {result}")
+                return result
             elif func_name == 'db_query_tax_rate_by_category_and_amount':
                 if params[0] is None or params[0] == '':
                     print(f"企业分类为空，使用默认税率")
@@ -197,7 +234,13 @@ class DatabaseExpressionEvaluator:
         """检查字段是否存在"""
         try:
             value = self._get_field_value(field_path, context)
-            return value is not None and value != ""
+            if value is None:
+                return False
+            if isinstance(value, str) and value == "":
+                return False
+            if isinstance(value, (int, float, Decimal)) and value == 0:
+                return False  # 数值0也视为不存在
+            return True
         except:
             return False
     
@@ -256,6 +299,7 @@ class DatabaseFieldCompletionEngine:
         self.db_session = db_session
         self.evaluator = DatabaseExpressionEvaluator(db_session)
         self.rules: List[FieldCompletionRule] = []
+        self.execution_log: List[Dict] = []
     
     def load_rules(self, rules: List[FieldCompletionRule]):
         """加载规则"""
@@ -264,14 +308,28 @@ class DatabaseFieldCompletionEngine:
     async def complete(self, domain: InvoiceDomainObject) -> InvoiceDomainObject:
         """执行字段补全"""
         context = {'invoice': domain}
+        self.execution_log = []  # 重置执行日志
+        
+        print(f"[DEBUG] 当前供应商: {domain.supplier.name if domain.supplier else 'None'}")
+        print(f"[DEBUG] 当前供应商税号: {domain.supplier.tax_no if domain.supplier else 'None'}")
         
         for rule in self.rules:
             if not rule.active:
+                print(f"[DEBUG] 规则已禁用: {rule.rule_name}")
                 continue
             
+            print(f"[DEBUG] 检查规则: {rule.rule_name}")
+            print(f"[DEBUG] 应用条件: {rule.apply_to}")
+            
             # 检查应用条件
-            if rule.apply_to and not await self.evaluator.evaluate(rule.apply_to, context):
-                continue
+            if rule.apply_to:
+                apply_result = await self.evaluator.evaluate(rule.apply_to, context)
+                print(f"[DEBUG] 应用条件结果: {apply_result}")
+                if not apply_result:
+                    print(f"[DEBUG] 跳过规则: {rule.rule_name} (条件不满足)")
+                    continue
+            
+            print(f"[DEBUG] 执行规则: {rule.rule_name}")
             
             try:
                 # 执行规则表达式
@@ -280,9 +338,23 @@ class DatabaseFieldCompletionEngine:
                 # 设置字段值
                 if field_value is not None:
                     self.evaluator._set_field_value(domain, rule.target_field, field_value)
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "target_field": rule.target_field,
+                        "value": str(field_value),
+                        "status": "success"
+                    }
+                    self.execution_log.append(log_entry)
                     print(f"字段补全成功: {rule.rule_name} - {rule.target_field} = {field_value}")
                     
             except Exception as e:
+                log_entry = {
+                    "rule_name": rule.rule_name,
+                    "target_field": rule.target_field,
+                    "error_message": str(e),
+                    "status": "error"
+                }
+                self.execution_log.append(log_entry)
                 print(f"字段补全失败: {rule.rule_name} - {str(e)}")
         
         return domain
@@ -295,6 +367,7 @@ class DatabaseBusinessValidationEngine:
         self.db_session = db_session
         self.evaluator = DatabaseExpressionEvaluator(db_session)
         self.rules: List[FieldValidationRule] = []
+        self.execution_log: List[Dict] = []
     
     def load_rules(self, rules: List[FieldValidationRule]):
         """加载规则"""
@@ -304,6 +377,7 @@ class DatabaseBusinessValidationEngine:
         """执行业务校验"""
         context = {'invoice': domain}
         errors = []
+        self.execution_log = []  # 重置执行日志
         
         for rule in self.rules:
             if not rule.active:
@@ -318,12 +392,29 @@ class DatabaseBusinessValidationEngine:
                 is_valid = await self.evaluator.evaluate(rule.rule_expression, context)
                 
                 if not is_valid:
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "error_message": rule.error_message,
+                        "status": "failed"
+                    }
+                    self.execution_log.append(log_entry)
                     errors.append(f"{rule.rule_name}: {rule.error_message}")
                     print(f"校验失败: {rule.rule_name} - {rule.error_message}")
                 else:
+                    log_entry = {
+                        "rule_name": rule.rule_name,
+                        "status": "passed"
+                    }
+                    self.execution_log.append(log_entry)
                     print(f"校验通过: {rule.rule_name}")
                     
             except Exception as e:
+                log_entry = {
+                    "rule_name": rule.rule_name,
+                    "error_message": f"规则执行错误 - {str(e)}",
+                    "status": "error"
+                }
+                self.execution_log.append(log_entry)
                 errors.append(f"{rule.rule_name}: 规则执行错误 - {str(e)}")
                 print(f"校验错误: {rule.rule_name} - {str(e)}")
         
