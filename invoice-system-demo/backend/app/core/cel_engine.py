@@ -8,6 +8,10 @@ from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule
 from ..database.crud import DatabaseQueryHelper
 from .flexible_db_query import FlexibleDatabaseQuery
+from ..utils.logger import get_logger
+
+# 创建logger
+logger = get_logger(__name__)
 
 
 class CELExpressionEvaluator:
@@ -33,7 +37,7 @@ class CELExpressionEvaluator:
         }
         
         # cel-python 不支持动态函数注册，我们使用预处理方式
-        print(f"[DEBUG] CEL自定义函数已准备: {list(self.custom_functions.keys())}")
+        logger.debug(f"CEL自定义函数已准备: {list(self.custom_functions.keys())}")
     
     def evaluate(self, expression: str, context: Dict[str, Any]) -> Any:
         """使用CEL计算表达式"""
@@ -201,33 +205,33 @@ class CELExpressionEvaluator:
     
     def _set_field_value(self, obj: Any, field_path: str, value: Any):
         """设置字段值"""
-        print(f"[DEBUG] _set_field_value 开始: obj={type(obj).__name__}, field_path={field_path}, value={value} (type: {type(value)})")
+        logger.debug(f"_set_field_value 开始: obj={type(obj).__name__}, field_path={field_path}, value={value} (type: {type(value)})")
         
         parts = field_path.split('.')
         current = obj
         
-        print(f"[DEBUG] 字段路径分解: {parts}")
+        logger.debug(f"字段路径分解: {parts}")
         
         # 导航到父对象
         for i, part in enumerate(parts[:-1]):
-            print(f"[DEBUG] 导航到字段 {i}: {part}")
+            logger.debug(f"导航到字段 {i}: {part}")
             if hasattr(current, part):
                 current = getattr(current, part)
-                print(f"[DEBUG] 成功获取字段 {part}, 当前对象类型: {type(current).__name__}")
+                logger.debug(f"成功获取字段 {part}, 当前对象类型: {type(current).__name__}")
             else:
-                print(f"[DEBUG] 字段 {part} 不存在于对象 {type(current).__name__}")
+                logger.debug(f"字段 {part} 不存在于对象 {type(current).__name__}")
                 return False
         
         # 设置最后一个字段
         final_field = parts[-1]
-        print(f"[DEBUG] 准备设置最终字段: {final_field}")
-        print(f"[DEBUG] 当前对象类型: {type(current).__name__}")
-        print(f"[DEBUG] 当前对象是否有该字段: {hasattr(current, final_field)}")
+        logger.debug(f"准备设置最终字段: {final_field}")
+        logger.debug(f"当前对象类型: {type(current).__name__}")
+        logger.debug(f"当前对象是否有该字段: {hasattr(current, final_field)}")
         
         if hasattr(current, final_field):
             # 获取当前字段值用于调试
             current_value = getattr(current, final_field)
-            print(f"[DEBUG] 字段 {final_field} 当前值: {current_value} (type: {type(current_value)})")
+            logger.debug(f"字段 {final_field} 当前值: {current_value} (type: {type(current_value)})")
             
             # 类型转换
             original_value = value
@@ -235,7 +239,7 @@ class CELExpressionEvaluator:
                 # 检查目标字段类型
                 if isinstance(current_value, Decimal) or final_field in ['total_amount', 'tax_amount', 'net_amount', 'tax_rate', 'quantity', 'unit_price', 'amount']:
                     value = Decimal(str(value))
-                    print(f"[DEBUG] 类型转换: {original_value} ({type(original_value)}) -> {value} ({type(value)})")
+                    logger.debug(f"类型转换: {original_value} ({type(original_value)}) -> {value} ({type(value)})")
             
             # 处理列表类型的特殊转换
             if isinstance(value, list) and final_field == 'items':
@@ -248,26 +252,26 @@ class CELExpressionEvaluator:
                         converted_items.append(InvoiceItem(**item_data))
                     else:
                         converted_items.append(item_data)
-                    print(f"converted_items: {converted_items}")
+                    logger.debug(f"converted_items: {converted_items}")
                 value = converted_items
             
             try:
                 setattr(current, final_field, value)
                 # 验证设置是否成功
                 new_value = getattr(current, final_field)
-                print(f"[DEBUG] 字段设置成功: {final_field} = {new_value} (type: {type(new_value)})")
+                logger.debug(f"字段设置成功: {final_field} = {new_value} (type: {type(new_value)})")
                 return True
             except Exception as e:
-                print(f"[DEBUG] 字段设置失败: {final_field}, 错误: {str(e)}")
+                logger.debug(f"字段设置失败: {final_field}, 错误: {str(e)}")
                 return False
                 
         elif isinstance(current, dict):
-            print(f"[DEBUG] 当前对象是字典，直接设置键值")
+            logger.debug(f"当前对象是字典，直接设置键值")
             current[final_field] = value
-            print(f"[DEBUG] 字典设置成功: {final_field} = {value}")
+            logger.debug(f"字典设置成功: {final_field} = {value}")
             return True
         else:
-            print(f"[DEBUG] 无法设置字段: 对象 {type(current).__name__} 没有字段 {final_field}")
+            logger.debug(f"无法设置字段: 对象 {type(current).__name__} 没有字段 {final_field}")
         
         return False
 
@@ -298,10 +302,10 @@ class CELFieldCompletionEngine:
                 rules.append(rule)
             
             self.load_rules(rules)
-            print(f"[DEBUG] 成功加载 {len(rules)} 条规则")
+            logger.debug(f"成功加载 {len(rules)} 条规则")
             
         except Exception as e:
-            print(f"[DEBUG] 加载规则配置失败: {str(e)}")
+            logger.debug(f"加载规则配置失败: {str(e)}")
     
     def load_rules(self, rules: List):
         """加载规则"""
@@ -312,21 +316,21 @@ class CELFieldCompletionEngine:
         self.execution_log = []  # 重置日志
         context = {'invoice': domain}
         
-        print(f"[DEBUG] CEL字段补全开始，共有 {len(self.rules)} 条规则")
+        logger.debug(f"CEL字段补全开始，共有 {len(self.rules)} 条规则")
         
         for rule in self.rules:
-            print(f"[DEBUG] 处理规则: {rule.rule_name}, target_field: '{rule.target_field}', active: {rule.active}")
+            logger.debug(f"处理规则: {rule.rule_name}, target_field: '{rule.target_field}', active: {rule.active}")
             
             if not rule.active:
-                print(f"[DEBUG] 规则 {rule.rule_name} 未激活，跳过")
+                logger.debug(f"规则 {rule.rule_name} 未激活，跳过")
                 continue
             
             # 检查是否是items[]语法
             if rule.target_field.startswith('items[].'):
-                print(f"[DEBUG] 识别为items[]规则: {rule.rule_name}")
+                logger.debug(f"识别为items[]规则: {rule.rule_name}")
                 self._process_items_rule(rule, domain)
             else:
-                print(f"[DEBUG] 识别为普通规则: {rule.rule_name}")
+                logger.debug(f"识别为普通规则: {rule.rule_name}")
                 # 原有的CEL处理逻辑
                 try:
                     # 检查应用条件
@@ -378,22 +382,22 @@ class CELFieldCompletionEngine:
     
     def _process_items_rule(self, rule: FieldCompletionRule, domain: InvoiceDomainObject):
         """处理items[]语法的规则"""
-        print(f"[DEBUG] _process_items_rule 开始: 规则={rule.rule_name}, 优先级={rule.priority}, 目标字段={rule.target_field}")
+        logger.debug(f"_process_items_rule 开始: 规则={rule.rule_name}, 优先级={rule.priority}, 目标字段={rule.target_field}")
         
         # 从target_field中提取实际的字段名（去掉items[].前缀）
         item_field = rule.target_field.replace('items[].', '')
-        print(f"[DEBUG] 提取的item字段名: {item_field}")
+        logger.debug(f"提取的item字段名: {item_field}")
         
         # 检查domain是否有items字段
         if not hasattr(domain, 'items') or not domain.items:
-            print(f"[DEBUG] domain没有items字段或items为空")
+            logger.debug(f"domain没有items字段或items为空")
             return
         
-        print(f"[DEBUG] domain.items 包含 {len(domain.items)} 个项目")
+        logger.debug(f"domain.items 包含 {len(domain.items)} 个项目")
         
         # 为每个item创建上下文并处理
         for i, item in enumerate(domain.items):
-            print(f"[DEBUG] 处理第 {i+1} 个item: {item.description if hasattr(item, 'description') else 'N/A'}")
+            logger.debug(f"处理第 {i+1} 个item: {item.description if hasattr(item, 'description') else 'N/A'}")
             
             # 创建包含当前item的上下文
             context = {
@@ -404,25 +408,25 @@ class CELFieldCompletionEngine:
             try:
                 # 检查应用条件
                 if rule.apply_to:
-                    print(f"[DEBUG] 检查应用条件: {rule.apply_to}")
+                    logger.debug(f"检查应用条件: {rule.apply_to}")
                     should_apply = self.evaluator.evaluate(rule.apply_to, context)
-                    print(f"[DEBUG] 应用条件结果: {should_apply}")
+                    logger.debug(f"应用条件结果: {should_apply}")
                     
                     # 特殊调试：如果是补全商品税率规则，详细检查条件
                     if rule.rule_name == "补全商品税率":
                         has_tax_rate = self.evaluator.evaluate("has(item.tax_rate)", context)
                         not_has_tax_rate = self.evaluator.evaluate("!has(item.tax_rate)", context)
-                        print(f"[DEBUG] has(item.tax_rate): {has_tax_rate}")
-                        print(f"[DEBUG] !has(item.tax_rate): {not_has_tax_rate}")
+                        logger.debug(f"has(item.tax_rate): {has_tax_rate}")
+                        logger.debug(f"!has(item.tax_rate): {not_has_tax_rate}")
                     
                     if not should_apply:
-                        print(f"[DEBUG] 条件不满足，跳过此item")
+                        logger.debug(f"条件不满足，跳过此item")
                         continue
                 
                 # 执行规则表达式
-                print(f"[DEBUG] 执行规则表达式: {rule.rule_expression}")
+                logger.debug(f"执行规则表达式: {rule.rule_expression}")
                 field_value = self.evaluator.evaluate(rule.rule_expression, context)
-                print(f"[DEBUG] 规则表达式结果: {field_value} (类型: {type(field_value)})")
+                logger.debug(f"规则表达式结果: {field_value} (类型: {type(field_value)})")
                 
                 if field_value is not None:
                     # 直接设置字段值到item对象
@@ -433,30 +437,13 @@ class CELFieldCompletionEngine:
                         else:
                             actual_value = field_value
                         
-                        print(f"[DEBUG] 准备设置字段 {item_field} = {actual_value} (类型: {type(actual_value)})")
-                        
-                        # 检查字段是否存在
-                        if not hasattr(item, item_field):
-                            print(f"[DEBUG] 错误: item对象没有字段 {item_field}")
-                            continue
-                        
-                        # 获取字段的当前值
-                        current_value = getattr(item, item_field)
-                        print(f"[DEBUG] 字段 {item_field} 当前值: {current_value}")
-                        
-                        # 类型转换（如果需要）
-                        if item_field == 'tax_rate' and isinstance(actual_value, (int, float)):
-                            from decimal import Decimal
-                            actual_value = Decimal(str(actual_value))
-                            print(f"[DEBUG] 转换为Decimal: {actual_value}")
-                        
                         # 设置字段值
                         setattr(item, item_field, actual_value)
-                        print(f"[DEBUG] 成功设置字段 {item_field} = {actual_value}")
+                        logger.debug(f"成功设置字段 {item_field} = {actual_value}")
                         
                         # 验证设置结果
                         new_value = getattr(item, item_field)
-                        print(f"[DEBUG] 验证: 字段 {item_field} 新值: {new_value}")
+                        logger.debug(f"验证: 字段 {item_field} 新值: {new_value}")
                         
                         log_entry = {
                             "type": "completion",
@@ -471,7 +458,7 @@ class CELFieldCompletionEngine:
                         print(log_entry["message"])
                         
                     except Exception as e:
-                        print(f"[DEBUG] 设置字段时发生错误: {str(e)}")
+                        logger.debug(f"设置字段时发生错误: {str(e)}")
                         log_entry = {
                             "type": "completion",
                             "status": "failed",
@@ -485,7 +472,7 @@ class CELFieldCompletionEngine:
                         print(log_entry["message"])
                         
             except Exception as e:
-                print(f"[DEBUG] 处理规则时发生错误: {str(e)}")
+                logger.debug(f"处理规则时发生错误: {str(e)}")
                 log_entry = {
                     "type": "completion",
                     "status": "error",
@@ -553,7 +540,7 @@ class CELBusinessValidationEngine:
                     print(log_entry["message"])
                     
             except Exception as e:
-                error_msg = f"{rule.rule_name}: CEL规则执行错误 - {str(e)}"
+                error_msg = f"{rule.rule_name}: 规则执行错误 - {str(e)}"
                 errors.append(error_msg)
                 log_entry = {
                     "type": "validation",
@@ -967,9 +954,15 @@ class DatabaseCELFieldCompletionEngine(CELFieldCompletionEngine):
                     if item_field == 'tax_rate' and isinstance(actual_value, (int, float)):
                         from decimal import Decimal
                         actual_value = Decimal(str(actual_value))
+                        logger.debug(f"转换为Decimal: {actual_value}")
                     
                     # 设置字段值
                     setattr(item, item_field, actual_value)
+                    logger.debug(f"成功设置字段 {item_field} = {actual_value}")
+                    
+                    # 验证设置结果
+                    new_value = getattr(item, item_field)
+                    logger.debug(f"验证: 字段 {item_field} 新值: {new_value}")
                     
                     log_entry = {
                         "type": "completion",
@@ -984,6 +977,7 @@ class DatabaseCELFieldCompletionEngine(CELFieldCompletionEngine):
                     print(log_entry["message"])
                         
             except Exception as e:
+                logger.debug(f"处理规则时发生错误: {str(e)}")
                 log_entry = {
                     "type": "completion",
                     "status": "error",

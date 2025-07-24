@@ -6,8 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from app.database.models import Company, TaxRate, BusinessRule
+from app.utils.logger import get_logger
 from pydantic import BaseModel
 from datetime import datetime
+
+logger = get_logger('crud')
 
 
 class CompanyCreate(BaseModel):
@@ -237,21 +240,21 @@ class DatabaseQueryHelper:
     @staticmethod
     async def get_company_tax_number_by_name(db: AsyncSession, company_name: str) -> Optional[str]:
         """根据公司名称获取税号"""
-        print(f"[DEBUG] 查询企业税号: {company_name}")
+        logger.debug(f"查询企业税号: {company_name}")
         
         # 首先尝试精确匹配
         company = await CompanyCRUD.get_by_name(db, company_name)
         if company:
-            print(f"[DEBUG] 精确匹配找到企业: {company.name}, 税号: {company.tax_number}")
+            logger.debug(f"精确匹配找到企业: {company.name}, 税号: {company.tax_number}")
             return company.tax_number
         
         # 如果精确匹配失败，尝试模糊匹配
         companies = await CompanyCRUD.get_by_name_pattern(db, company_name)
         if companies:
-            print(f"[DEBUG] 模糊匹配找到企业: {companies[0].name}, 税号: {companies[0].tax_number}")
+            logger.debug(f"模糊匹配找到企业: {companies[0].name}, 税号: {companies[0].tax_number}")
             return companies[0].tax_number
         
-        print(f"[DEBUG] 未找到企业: {company_name}")
+        logger.debug(f"未找到企业: {company_name}")
         return None
     
     @staticmethod

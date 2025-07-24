@@ -10,7 +10,10 @@ from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule, FieldValidationRule
 from ..database.crud import DatabaseQueryHelper
 from .flexible_db_query import db_query
+from ..utils.logger import get_logger
 import operator
+
+logger = get_logger('database')
 
 
 class DatabaseExpressionEvaluator:
@@ -32,7 +35,7 @@ class DatabaseExpressionEvaluator:
     async def evaluate(self, expression: str, context: Dict[str, Any]) -> Any:
         """计算表达式"""
         expression = expression.strip()
-        print(f"[DEBUG] 求值表达式: '{expression}'")
+        logger.debug(f"求值表达式: '{expression}'")
         
         # 处理数据库查询函数
         if expression.startswith('db_query('):
@@ -63,14 +66,14 @@ class DatabaseExpressionEvaluator:
             inner_expression = expression[1:].strip()
             inner_result = await self.evaluate(inner_expression, context)
             result = not inner_result
-            print(f"[DEBUG] !({inner_expression}) = {result} (inner: {inner_result})")
+            logger.debug(f"!({inner_expression}) = {result} (inner: {inner_result})")
             return result
         
         # 处理has()函数
         if expression.startswith('has(') and expression.endswith(')'):
             field_path = expression[4:-1].strip()
             result = self._has_field(field_path, context)
-            print(f"[DEBUG] has({field_path}) = {result}")
+            logger.debug(f"has({field_path}) = {result}")
             return result
         
         # 处理contains()函数 
@@ -132,7 +135,7 @@ class DatabaseExpressionEvaluator:
     
     async def _handle_db_query(self, expression: str, context: Dict[str, Any]) -> Any:
         """处理数据库查询函数 - 使用新的灵活查询系统"""
-        print(f"[DEBUG] 处理数据库查询: {expression}")
+        logger.debug(f"处理数据库查询: {expression}")
         
         try:
             # 解析函数调用 db_query('query_name', param1, param2, ...)
@@ -176,21 +179,21 @@ class DatabaseExpressionEvaluator:
                 # 处理字段引用
                 if param.startswith('invoice.'):
                     field_value = self._get_field_value(param, context)
-                    print(f"[DEBUG] 字段 {param} 的值: {field_value}")
+                    logger.debug(f"字段 {param} 的值: {field_value}")
                     query_params.append(field_value)
                 else:
                     # 处理字符串字面量
                     query_params.append(param.strip('"\''))
             
-            print(f"[DEBUG] 查询名称: {query_name}, 参数: {query_params}")
+            logger.debug(f"查询名称: {query_name}, 参数: {query_params}")
             
             # 调用灵活查询系统
             result = await db_query(query_name, *query_params)
-            print(f"[DEBUG] 查询结果: {result}")
+            logger.debug(f"查询结果: {result}")
             return result
             
         except Exception as e:
-            print(f"数据库查询错误: {expression} - {str(e)}")
+            logger.error(f"数据库查询错误: {expression} - {str(e)}")
             return None
     
     async def _handle_contains(self, expression: str, context: Dict[str, Any]) -> bool:
@@ -306,26 +309,26 @@ class DatabaseFieldCompletionEngine:
         context = {'invoice': domain}
         self.execution_log = []  # 重置执行日志
         
-        print(f"[DEBUG] 当前供应商: {domain.supplier.name if domain.supplier else 'None'}")
-        print(f"[DEBUG] 当前供应商税号: {domain.supplier.tax_no if domain.supplier else 'None'}")
+        logger.debug(f"当前供应商: {domain.supplier.name if domain.supplier else 'None'}")
+        logger.debug(f"当前供应商税号: {domain.supplier.tax_no if domain.supplier else 'None'}")
         
         for rule in self.rules:
             if not rule.active:
-                print(f"[DEBUG] 规则已禁用: {rule.rule_name}")
+                logger.debug(f"规则已禁用: {rule.rule_name}")
                 continue
             
-            print(f"[DEBUG] 检查规则: {rule.rule_name}")
-            print(f"[DEBUG] 应用条件: {rule.apply_to}")
+            logger.debug(f"检查规则: {rule.rule_name}")
+            logger.debug(f"应用条件: {rule.apply_to}")
             
             # 检查应用条件
             if rule.apply_to:
                 apply_result = await self.evaluator.evaluate(rule.apply_to, context)
-                print(f"[DEBUG] 应用条件结果: {apply_result}")
+                logger.debug(f"应用条件结果: {apply_result}")
                 if not apply_result:
-                    print(f"[DEBUG] 跳过规则: {rule.rule_name} (条件不满足)")
+                    logger.debug(f"跳过规则: {rule.rule_name} (条件不满足)")
                     continue
             
-            print(f"[DEBUG] 执行规则: {rule.rule_name}")
+            logger.debug(f"执行规则: {rule.rule_name}")
             
             try:
                 # 执行规则表达式
@@ -341,7 +344,7 @@ class DatabaseFieldCompletionEngine:
                         "status": "success"
                     }
                     self.execution_log.append(log_entry)
-                    print(f"字段补全成功: {rule.rule_name} - {rule.target_field} = {field_value}")
+                    logger.info(f"字段补全成功: {rule.rule_name} - {rule.target_field} = {field_value}")
                     
             except Exception as e:
                 log_entry = {
@@ -351,7 +354,7 @@ class DatabaseFieldCompletionEngine:
                     "status": "error"
                 }
                 self.execution_log.append(log_entry)
-                print(f"字段补全失败: {rule.rule_name} - {str(e)}")
+                logger.error(f"字段补全失败: {rule.rule_name} - {str(e)}")
         
         return domain
 
@@ -395,14 +398,14 @@ class DatabaseBusinessValidationEngine:
                     }
                     self.execution_log.append(log_entry)
                     errors.append(f"{rule.rule_name}: {rule.error_message}")
-                    print(f"校验失败: {rule.rule_name} - {rule.error_message}")
+                    logger.warning(f"校验失败: {rule.rule_name} - {rule.error_message}")
                 else:
                     log_entry = {
                         "rule_name": rule.rule_name,
                         "status": "passed"
                     }
                     self.execution_log.append(log_entry)
-                    print(f"校验通过: {rule.rule_name}")
+                    logger.debug(f"校验通过: {rule.rule_name}")
                     
             except Exception as e:
                 log_entry = {
@@ -412,6 +415,6 @@ class DatabaseBusinessValidationEngine:
                 }
                 self.execution_log.append(log_entry)
                 errors.append(f"{rule.rule_name}: 规则执行错误 - {str(e)}")
-                print(f"校验错误: {rule.rule_name} - {str(e)}")
+                logger.error(f"校验错误: {rule.rule_name} - {str(e)}")
         
         return len(errors) == 0, errors

@@ -6,7 +6,10 @@ from datetime import datetime
 from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule, FieldValidationRule
 from .cel_engine import CELFieldCompletionEngine, CELBusinessValidationEngine, CELExpressionEvaluator
+from ..utils.logger import get_logger
 import operator
+
+logger = get_logger('rule_engine')
 
 
 class SimpleExpressionEvaluator:
@@ -90,11 +93,11 @@ class SimpleExpressionEvaluator:
         # 处理否定运算符 (在逻辑运算符之后处理，确保!has()能正确工作)
         if expression.startswith('!'):
             inner_expression = expression[1:].strip()
-            print(f"[DEBUG] 处理否定运算符: 原表达式='{expression}', 内部表达式='{inner_expression}'")
+            logger.debug(f"处理否定运算符: 原表达式='{expression}', 内部表达式='{inner_expression}'")
             # 递归求值内部表达式
             inner_result = self.evaluate(inner_expression, context)
             result = not bool(inner_result)
-            print(f"[DEBUG] 否定运算: !({inner_expression}) = !({inner_result}) = {result}")
+            logger.debug(f"否定运算: !({inner_expression}) = !({inner_result}) = {result}")
             return result
         
         # 处理has()函数
@@ -182,53 +185,53 @@ class SimpleExpressionEvaluator:
     
     def _has_field(self, field_path: str, context: Dict[str, Any]) -> bool:
         """检查字段是否存在且有值"""
-        print(f"[DEBUG] _has_field 检查: field_path='{field_path}'")
+        logger.debug(f"_has_field 检查: field_path='{field_path}'")
         try:
             value = self._get_field_value_from_context(field_path, context)
-            print(f"[DEBUG] _has_field 获取到的值: {value} (type: {type(value)})")
+            logger.debug(f"_has_field 获取到的值: {value} (type: {type(value)})")
             
             # None值视为不存在
             if value is None:
-                print(f"[DEBUG] _has_field 结果: False (值为None)")
+                logger.debug(f"_has_field 结果: False (值为None)")
                 return False
             # 空字符串视为不存在
             if isinstance(value, str) and value == "":
-                print(f"[DEBUG] _has_field 结果: False (值为空字符串)")
+                logger.debug(f"_has_field 结果: False (值为空字符串)")
                 return False
             # 数值0视为存在（只有None才视为不存在）
             # if isinstance(value, (int, float, Decimal)) and value == 0:
             #     return False
-            print(f"[DEBUG] _has_field 结果: True (值存在且非空)")
+            logger.debug(f"_has_field 结果: True (值存在且非空)")
             return True
         except Exception as e:
-            print(f"[DEBUG] _has_field 异常: {str(e)}")
+            logger.debug(f"_has_field 异常: {str(e)}")
             return False
     
     def _get_field_value_from_context(self, field_path: str, context: Dict[str, Any]) -> Any:
         """从context中获取字段值"""
-        print(f"[DEBUG] _get_field_value_from_context: field_path='{field_path}', context_keys={list(context.keys())}")
+        logger.debug(f"_get_field_value_from_context: field_path='{field_path}', context_keys={list(context.keys())}")
         
         parts = field_path.split('.')
         current = context
         
         for i, part in enumerate(parts):
-            print(f"[DEBUG] 处理字段部分 {i}: '{part}', 当前对象类型: {type(current).__name__}")
+            logger.debug(f"处理字段部分 {i}: '{part}', 当前对象类型: {type(current).__name__}")
             
             if isinstance(current, dict):
                 current = current.get(part)
-                print(f"[DEBUG] 从字典获取 '{part}': {current}")
+                logger.debug(f"从字典获取 '{part}': {current}")
             elif hasattr(current, part):
                 current = getattr(current, part)
-                print(f"[DEBUG] 从对象获取属性 '{part}': {current} (type: {type(current)})")
+                logger.debug(f"从对象获取属性 '{part}': {current} (type: {type(current)})")
             else:
-                print(f"[DEBUG] 字段 '{part}' 不存在于 {type(current).__name__}")
+                logger.debug(f"字段 '{part}' 不存在于 {type(current).__name__}")
                 return None
             
             if current is None:
-                print(f"[DEBUG] 字段值为None，返回None")
+                logger.debug(f"字段值为None，返回None")
                 return None
         
-        print(f"[DEBUG] 最终获取到的值: {current} (type: {type(current)})")
+        logger.debug(f"最终获取到的值: {current} (type: {type(current)})")
         return current
     
     def _get_field_value(self, obj_or_path: Any, field_path: Optional[str] = None) -> Any:
