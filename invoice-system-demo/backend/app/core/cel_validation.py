@@ -95,6 +95,7 @@ class CELBusinessValidationEngine:
                          "type": "validation",
                          "status": "failed",
                          "rule_name": rule.rule_name,
+                         "error_message": rule.error_message,
                          "message": f"❌ {rule.rule_name}(failed)→ {rule.error_message}"
                      })
                 else:
@@ -122,6 +123,7 @@ class CELBusinessValidationEngine:
                      "status": "error",
                      "rule_name": rule.rule_name,
                      "exception": str(e),
+                     "error_message": f"校验规则执行错误: {str(e)}",
                      "message": f"❌ {rule.rule_name}(error)→ 执行错误: {str(e)}"
                  })
         
@@ -200,6 +202,7 @@ class DatabaseCELBusinessValidationEngine(CELBusinessValidationEngine):
                          "type": "validation",
                          "status": "failed",
                          "rule_name": rule.rule_name,
+                         "error_message": rule.error_message,
                          "message": f"❌ {rule.rule_name}(failed)→ {rule.error_message}"
                      })
                 else:
@@ -227,6 +230,7 @@ class DatabaseCELBusinessValidationEngine(CELBusinessValidationEngine):
                      "status": "error",
                      "rule_name": rule.rule_name,
                      "exception": str(e),
+                     "error_message": f"校验规则执行错误: {str(e)}",
                      "message": f"❌ {rule.rule_name}(error)→ 执行错误: {str(e)}"
                  })
         

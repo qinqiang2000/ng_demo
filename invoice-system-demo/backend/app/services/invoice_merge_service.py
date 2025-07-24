@@ -19,43 +19,30 @@ class InvoiceMergeService:
     def __init__(self):
         self.execution_log = []
     
+
+    
     def merge_invoices(
         self, 
-        completed_invoices: List[InvoiceDomainObject], 
-        strategy: MergeStrategy = MergeStrategy.NONE,
-        merge_config: Optional[Dict[str, Any]] = None
+        invoices: List[InvoiceDomainObject], 
+        strategy: MergeStrategy,
+        config: Optional[Dict[str, Any]] = None
     ) -> List[InvoiceDomainObject]:
         """合并发票
         
         Args:
-            completed_invoices: 已补全的发票列表
+            invoices: 待合并的发票列表
             strategy: 合并策略
-            merge_config: 合并配置参数
+            config: 合并配置参数
             
         Returns:
             合并后的发票列表
         """
         self.execution_log = []
+        self.execution_log.append(f"执行合并策略: {strategy.value}")
         
-        if not completed_invoices:
-            self.execution_log.append("输入发票列表为空，无需合并")
-            return []
-        
-        self.execution_log.append(f"开始合并 {len(completed_invoices)} 张发票，策略: {strategy.value}")
-        
-        if strategy == MergeStrategy.NONE:
-            return self._no_merge(completed_invoices)
-        elif strategy == MergeStrategy.BY_CUSTOMER:
-            return self._merge_by_customer(completed_invoices)
-        elif strategy == MergeStrategy.BY_SUPPLIER:
-            return self._merge_by_supplier(completed_invoices)
-        elif strategy == MergeStrategy.BY_DATE:
-            return self._merge_by_date(completed_invoices)
-        elif strategy == MergeStrategy.CUSTOM:
-            return self._merge_custom(completed_invoices, merge_config or {})
-        else:
-            self.execution_log.append(f"未知的合并策略: {strategy.value}，使用默认策略")
-            return self._no_merge(completed_invoices)
+        # 暂时空转，直接返回输入的发票列表
+        # TODO: 后续实现具体的合并逻辑
+        return invoices
     
     def _no_merge(self, invoices: List[InvoiceDomainObject]) -> List[InvoiceDomainObject]:
         """不合并策略 - 保持原样"""
@@ -105,27 +92,23 @@ class InvoiceMergeService:
     
     def split_invoices(
         self, 
-        merged_invoices: List[InvoiceDomainObject], 
-        split_config: Optional[Dict[str, Any]] = None
+        invoices: List[InvoiceDomainObject],
+        config: Optional[Dict[str, Any]] = None
     ) -> List[InvoiceDomainObject]:
-        """拆分发票
+        """拆分发票（明细拆分）
         
         Args:
-            merged_invoices: 合并后的发票列表
-            split_config: 拆分配置参数
+            invoices: 待拆分的发票列表
+            config: 拆分配置参数
             
         Returns:
             拆分后的发票列表
         """
-        self.execution_log.append(f"开始拆分 {len(merged_invoices)} 张发票")
+        self.execution_log.append("执行明细拆分")
         
-        # TODO: 实现发票拆分逻辑
-        # 1. 按明细行数量拆分
-        # 2. 按金额阈值拆分
-        # 3. 按业务规则拆分
-        
-        self.execution_log.append("发票拆分功能暂未实现，返回原始发票列表")
-        return merged_invoices
+        # 暂时空转，直接返回输入的发票列表
+        # TODO: 后续实现具体的明细拆分逻辑
+        return invoices
     
     def get_merge_summary(self, original_count: int, merged_count: int) -> Dict[str, Any]:
         """获取合并摘要信息"""

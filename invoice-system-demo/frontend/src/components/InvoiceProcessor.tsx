@@ -117,6 +117,12 @@ const InvoiceProcessor: React.FC = () => {
                 <span style={{ marginLeft: 8, fontSize: '12px', color: '#999' }}>
                   ({log.status})
                 </span>
+                {/* 失败时显示详细错误消息 */}
+                {log.status === 'failed' && log.error_message && (
+                  <span style={{ marginLeft: 8, color: '#ff4d4f' }}>
+                    → {log.error_message}
+                  </span>
+                )}
                 {log.target_field && log.value && (
                   <span style={{ marginLeft: 8, color: '#666' }}>
                     → {log.item_index !== undefined ? 
@@ -135,7 +141,8 @@ const InvoiceProcessor: React.FC = () => {
                     条件: {log.condition}
                   </div>
                 )}
-                {log.error_message && (
+                {/* 非失败状态的错误消息保持原样 */}
+                {log.status !== 'failed' && log.error_message && (
                   <span style={{ marginLeft: 8, color: '#faad14' }}>
                     ({log.error_message})
                   </span>
@@ -169,6 +176,9 @@ const InvoiceProcessor: React.FC = () => {
               renderExecutionLogs(processResult.execution_details.completion_logs, '补全规则执行详情')}
             {/* 在"业务校验通过"后显示校验详情 */}
             {step === '✓ 业务校验通过' && processResult.execution_details?.validation_logs && 
+              renderExecutionLogs(processResult.execution_details.validation_logs, '校验规则执行详情')}
+            {/* 在校验失败时也显示校验详情 */}
+            {step.includes('校验失败') && processResult.execution_details?.validation_logs && 
               renderExecutionLogs(processResult.execution_details.validation_logs, '校验规则执行详情')}
           </div>
         ))}
@@ -254,16 +264,16 @@ const InvoiceProcessor: React.FC = () => {
 
             {renderProcessSteps()}
 
-            {processResult.success && processResult.data && (
+            {processResult.success && processResult.data && processResult.data.results && processResult.data.results.length > 0 && (
               <Tabs defaultActiveKey="1" style={{ marginTop: 16 }}>
                 <Tabs.TabPane tab="Domain Object" key="1">
                   <pre className="xml-viewer">
-                    {JSON.stringify(processResult.data.domain_object, null, 2)}
+                    {JSON.stringify(processResult.data.results[0].domain_object, null, 2)}
                   </pre>
                 </Tabs.TabPane>
                 <Tabs.TabPane tab="处理后的KDUBL" key="2">
                   <pre className="xml-viewer">
-                    {processResult.data.processed_kdubl}
+                    {processResult.data.results[0].processed_kdubl}
                   </pre>
                 </Tabs.TabPane>
               </Tabs>

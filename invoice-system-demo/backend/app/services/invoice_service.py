@@ -52,7 +52,7 @@ class InvoiceProcessingService:
         self.validation_engine.load_rules(validation_rules)
     
     async def process_kdubl_invoice(self, kdubl: str, source_system: str = "ERP") -> Dict:
-        """处理KDUBL格式的发票数据"""
+        """处理KDUBL格式的发票数据（统一处理流程）"""
         result = {
             "success": False,
             "data": None,
@@ -80,33 +80,70 @@ class InvoiceProcessingService:
             result["execution_details"]["completion_logs"] = getattr(self.completion_engine, 'execution_log', [])
             result["steps"].append("✓ 数据补全完成")
             
-            # 3. 业务校验
+            # 3. 合并拆分处理（单张发票作为长度为1的批次）
+            result["steps"].append("执行合并拆分处理")
+            from ..services.invoice_merge_service import InvoiceMergeService, MergeStrategy
+            merge_service = InvoiceMergeService()
+            
+            # 执行合并（对单张发票使用NONE策略）
+            merged_invoices = merge_service.merge_invoices([domain], MergeStrategy.NONE)
+            
+            # 执行拆分
+            processed_invoices = merge_service.split_invoices(merged_invoices)
+            result["steps"].append(f"✓ 合并拆分完成，生成{len(processed_invoices)}张发票")
+            
+            # 4. 逐个校验和转换
             result["steps"].append("执行业务校验规则")
-            if self.db_session:
-                is_valid, errors = await self.validation_engine.validate_async(domain)
-            else:
-                is_valid, errors = self.validation_engine.validate(domain)
+            results = []
+            all_valid = True
+            
+            for i, invoice in enumerate(processed_invoices):
+                # 业务校验
+                if self.db_session:
+                    is_valid, errors = await self.validation_engine.validate_async(invoice)
+                else:
+                    is_valid, errors = self.validation_engine.validate(invoice)
+                
+                if is_valid:
+                    # 转换为KDUBL
+                    processed_kdubl = self.converter.build(invoice)
+                    
+                    results.append({
+                        "invoice_id": f"processed_{i+1}",
+                        "invoice_number": invoice.invoice_number,
+                        "success": True,
+                        "domain_object": invoice.dict(),
+                        "processed_kdubl": processed_kdubl,
+                        "source_system": source_system
+                    })
+                else:
+                    all_valid = False
+                    results.append({
+                        "invoice_id": f"processed_{i+1}",
+                        "invoice_number": invoice.invoice_number,
+                        "success": False,
+                        "errors": errors,
+                        "source_system": source_system
+                    })
+            
             # 收集校验执行日志
             result["execution_details"]["validation_logs"] = getattr(self.validation_engine, 'execution_log', [])
             
-            if not is_valid:
-                result["errors"] = errors
-                result["steps"].append(f"✗ 校验失败: {len(errors)}个错误")
-                return result
-            
-            result["steps"].append("✓ 业务校验通过")
-            
-            # 4. 转回KDUBL格式
-            result["steps"].append("生成处理后的KDUBL")
-            processed_kdubl = self.converter.build(domain)
-            result["steps"].append("✓ KDUBL生成成功")
+            if all_valid:
+                result["steps"].append("✓ 业务校验通过")
+            else:
+                failed_count = len([r for r in results if not r["success"]])
+                result["steps"].append(f"✗ 校验失败: {failed_count}张发票有错误")
             
             # 5. 返回结果
             result["success"] = True
             result["data"] = {
-                "domain_object": domain.dict(),
-                "processed_kdubl": processed_kdubl,
-                "source_system": source_system
+                "results": results,
+                "summary": {
+                    "total_processed": len(processed_invoices),
+                    "successful_count": len([r for r in results if r["success"]]),
+                    "failed_count": len([r for r in results if not r["success"]])
+                }
             }
             
         except Exception as e:

@@ -28,7 +28,7 @@ class BatchInvoiceProcessingService:
         merge_strategy: str = "none",
         merge_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """批量处理发票
+        """批量处理发票（复用单张处理逻辑）
         
         Args:
             xml_files: XML文件列表
@@ -47,55 +47,130 @@ class BatchInvoiceProcessingService:
             "batch_id": batch_id,
             "total_files": len(xml_files),
             "processing_time": None,
-            "stages": {
-                "completion": {
-                    "total_files": len(xml_files),
-                    "successful_count": 0,
-                    "failed_count": 0,
-                    "details": []
-                },
-                "merge": {
-                    "input_invoices": 0,
-                    "output_invoices": 0,
-                    "merge_strategy": merge_strategy,
-                    "execution_log": []
-                },
-                "validation": {
-                    "total_invoices": 0,
-                    "passed_count": 0,
-                    "failed_count": 0,
-                    "details": []
-                }
-            },
             "results": [],
-            "errors": []
+            "errors": [],
+            "summary": {
+                "total_files": len(xml_files),
+                "successful_files": 0,
+                "failed_files": 0,
+                "total_output_invoices": 0
+            }
         }
         
         try:
-            # 阶段1：批量补全
-            completion_results = await self._batch_completion(xml_files, source_system)
-            result["stages"]["completion"] = completion_results["stage_info"]
+            # 批量处理：对每个文件调用单张处理逻辑
+            successful_files = 0
+            failed_files = 0
+            total_output_invoices = 0
             
-            if completion_results["successful_invoices"]:
-                # 阶段2：合并拆分
-                merge_results = await self._batch_merge(
-                    completion_results["successful_invoices"], 
-                    merge_strategy, 
-                    merge_config
-                )
-                result["stages"]["merge"] = merge_results["stage_info"]
+            # 收集所有成功处理的发票，用于统一合并拆分
+            all_completed_invoices = []
+            file_invoice_mapping = []  # 记录文件与发票的映射关系
+            
+            # 第一阶段：逐个处理文件（解析+补全）
+            for i, file in enumerate(xml_files):
+                try:
+                    # 读取文件内容
+                    content = await file.read()
+                    kdubl_xml = content.decode('utf-8')
+                    await file.seek(0)  # 重置文件指针
+                    
+                    # 调用单张处理的前两个步骤（解析+补全）
+                    domain_obj = self.converter.parse(kdubl_xml)
+                    
+                    # 数据补全
+                    if self.db_session:
+                        domain_obj = await self.invoice_service.completion_engine.complete_async(domain_obj)
+                    else:
+                        domain_obj = self.invoice_service.completion_engine.complete(domain_obj)
+                    
+                    all_completed_invoices.append(domain_obj)
+                    file_invoice_mapping.append({
+                        "file_index": i,
+                        "filename": file.filename,
+                        "invoice_number": domain_obj.invoice_number,
+                        "success": True
+                    })
+                    successful_files += 1
+                    
+                except Exception as e:
+                    file_invoice_mapping.append({
+                        "file_index": i,
+                        "filename": file.filename,
+                        "success": False,
+                        "error": str(e)
+                    })
+                    failed_files += 1
+            
+            # 第二阶段：统一合并拆分（批量一次性处理）
+            if all_completed_invoices:
+                # 转换合并策略
+                try:
+                    strategy_enum = MergeStrategy(merge_strategy)
+                except ValueError:
+                    strategy_enum = MergeStrategy.NONE
                 
-                # 阶段3：批量校验和转换
-                validation_results = await self._batch_validation_and_conversion(
-                    merge_results["merged_invoices"]
-                )
-                result["stages"]["validation"] = validation_results["stage_info"]
-                result["results"] = validation_results["results"]
+                # 执行合并
+                merged_invoices = self.merge_service.merge_invoices(all_completed_invoices, strategy_enum)
                 
-                # 判断整体成功状态
-                result["success"] = validation_results["stage_info"]["failed_count"] == 0
-            else:
-                result["errors"].append("所有文件补全失败，无法进行后续处理")
+                # 执行拆分
+                processed_invoices = self.merge_service.split_invoices(merged_invoices)
+                
+                total_output_invoices = len(processed_invoices)
+                
+                # 第三阶段：逐个校验和转换
+                for i, invoice in enumerate(processed_invoices):
+                    try:
+                        # 业务校验
+                        if self.db_session:
+                            is_valid, errors = await self.invoice_service.validation_engine.validate_async(invoice)
+                        else:
+                            is_valid, errors = self.invoice_service.validation_engine.validate(invoice)
+                        
+                        # 收集校验执行日志
+                        validation_logs = getattr(self.invoice_service.validation_engine, 'execution_log', [])
+                        
+                        if is_valid:
+                            # 转换为KDUBL
+                            processed_kdubl = self.converter.build(invoice)
+                            result["results"].append({
+                                "invoice_id": f"output_{i+1}",
+                                "invoice_number": invoice.invoice_number,
+                                "success": True,
+                                "data": {
+                                    "domain_object": invoice.dict(),
+                                    "processed_kdubl": processed_kdubl
+                                },
+                                "validation_logs": validation_logs
+                            })
+                        else:
+                            result["results"].append({
+                                "invoice_id": f"output_{i+1}",
+                                "invoice_number": invoice.invoice_number,
+                                "success": False,
+                                "errors": errors,
+                                "validation_logs": validation_logs
+                            })
+                    except Exception as e:
+                        result["results"].append({
+                            "invoice_id": f"output_{i+1}",
+                            "invoice_number": getattr(invoice, 'invoice_number', 'unknown'),
+                            "success": False,
+                            "errors": [f"处理异常: {str(e)}"]
+                        })
+            
+            # 更新摘要信息
+            result["summary"].update({
+                "successful_files": successful_files,
+                "failed_files": failed_files,
+                "total_output_invoices": total_output_invoices,
+                "file_mapping": file_invoice_mapping
+            })
+            
+            # 判断整体成功状态
+            result["success"] = failed_files == 0 and all(
+                r["success"] for r in result["results"]
+            )
                 
         except Exception as e:
             result["errors"].append(f"批量处理异常: {str(e)}")
@@ -106,215 +181,3 @@ class BatchInvoiceProcessingService:
         result["processing_time"] = f"{processing_time:.2f}s"
         
         return result
-    
-    async def _batch_completion(
-        self, 
-        xml_files: List[UploadFile], 
-        source_system: str
-    ) -> Dict[str, Any]:
-        """批量补全阶段"""
-        successful_invoices = []
-        completion_details = []
-        
-        # 并发处理所有文件
-        tasks = []
-        for file in xml_files:
-            task = self._process_single_file_completion(file, source_system)
-            tasks.append(task)
-        
-        # 等待所有任务完成
-        completion_results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 处理结果
-        successful_count = 0
-        failed_count = 0
-        
-        for i, result in enumerate(completion_results):
-            filename = xml_files[i].filename
-            
-            if isinstance(result, Exception):
-                # 处理异常
-                completion_details.append({
-                    "filename": filename,
-                    "success": False,
-                    "error": str(result)
-                })
-                failed_count += 1
-            elif result["success"]:
-                # 处理成功
-                domain_obj = result["domain_object"]
-                successful_invoices.append(domain_obj)
-                completion_details.append({
-                    "filename": filename,
-                    "success": True,
-                    "invoice_number": domain_obj.invoice_number,
-                    "steps": result["steps"]
-                })
-                successful_count += 1
-            else:
-                # 处理失败
-                completion_details.append({
-                    "filename": filename,
-                    "success": False,
-                    "errors": result["errors"]
-                })
-                failed_count += 1
-        
-        return {
-            "successful_invoices": successful_invoices,
-            "stage_info": {
-                "total_files": len(xml_files),
-                "successful_count": successful_count,
-                "failed_count": failed_count,
-                "details": completion_details
-            }
-        }
-    
-    async def _process_single_file_completion(
-        self, 
-        file: UploadFile, 
-        source_system: str
-    ) -> Dict[str, Any]:
-        """处理单个文件的补全（仅执行解析和补全，不包括校验）"""
-        try:
-            # 读取文件内容
-            content = await file.read()
-            kdubl_xml = content.decode('utf-8')
-            
-            # 重置文件指针（如果需要再次读取）
-            await file.seek(0)
-            
-            # 1. 解析为Domain Object
-            domain_obj = self.converter.parse(kdubl_xml)
-            
-            # 2. 仅执行数据补全（不执行校验）
-            if self.db_session:
-                domain_obj = await self.invoice_service.completion_engine.complete_async(domain_obj)
-            else:
-                domain_obj = self.invoice_service.completion_engine.complete(domain_obj)
-            
-            return {
-                "success": True,
-                "domain_object": domain_obj,
-                "steps": [f"✓ 成功解析发票: {domain_obj.invoice_number}", "✓ 数据补全完成"]
-            }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "errors": [f"文件处理异常: {str(e)}"]
-            }
-    
-    async def _batch_merge(
-        self, 
-        completed_invoices: List[InvoiceDomainObject], 
-        merge_strategy: str,
-        merge_config: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """批量合并阶段"""
-        original_count = len(completed_invoices)
-        
-        try:
-            # 转换合并策略
-            strategy = MergeStrategy(merge_strategy)
-        except ValueError:
-            strategy = MergeStrategy.NONE
-        
-        # 执行合并
-        merged_invoices = self.merge_service.merge_invoices(
-            completed_invoices, 
-            strategy, 
-            merge_config
-        )
-        
-        merged_count = len(merged_invoices)
-        
-        return {
-            "merged_invoices": merged_invoices,
-            "stage_info": {
-                "input_invoices": original_count,
-                "output_invoices": merged_count,
-                "merge_strategy": merge_strategy,
-                "execution_log": self.merge_service.execution_log
-            }
-        }
-    
-    async def _batch_validation_and_conversion(
-        self, 
-        merged_invoices: List[InvoiceDomainObject]
-    ) -> Dict[str, Any]:
-        """批量校验和转换阶段"""
-        validation_details = []
-        final_results = []
-        passed_count = 0
-        failed_count = 0
-        
-        for i, invoice in enumerate(merged_invoices):
-            try:
-                # 业务校验
-                if self.db_session:
-                    is_valid, errors = await self.invoice_service.validation_engine.validate_async(invoice)
-                else:
-                    is_valid, errors = self.invoice_service.validation_engine.validate(invoice)
-                
-                if is_valid:
-                    # 转换为KDUBL
-                    processed_kdubl = self.converter.build(invoice)
-                    
-                    final_results.append({
-                        "invoice_id": f"merged_{i+1}",
-                        "invoice_number": invoice.invoice_number,
-                        "success": True,
-                        "data": {
-                            "domain_object": invoice.dict(),
-                            "processed_kdubl": processed_kdubl
-                        }
-                    })
-                    
-                    validation_details.append({
-                        "invoice_number": invoice.invoice_number,
-                        "success": True,
-                        "validation_passed": True
-                    })
-                    passed_count += 1
-                else:
-                    final_results.append({
-                        "invoice_id": f"merged_{i+1}",
-                        "invoice_number": invoice.invoice_number,
-                        "success": False,
-                        "errors": errors
-                    })
-                    
-                    validation_details.append({
-                        "invoice_number": invoice.invoice_number,
-                        "success": False,
-                        "validation_passed": False,
-                        "errors": errors
-                    })
-                    failed_count += 1
-                    
-            except Exception as e:
-                final_results.append({
-                    "invoice_id": f"merged_{i+1}",
-                    "invoice_number": getattr(invoice, 'invoice_number', 'unknown'),
-                    "success": False,
-                    "errors": [f"处理异常: {str(e)}"]
-                })
-                
-                validation_details.append({
-                    "invoice_number": getattr(invoice, 'invoice_number', 'unknown'),
-                    "success": False,
-                    "validation_passed": False,
-                    "errors": [f"处理异常: {str(e)}"]
-                })
-                failed_count += 1
-        
-        return {
-            "results": final_results,
-            "stage_info": {
-                "total_invoices": len(merged_invoices),
-                "passed_count": passed_count,
-                "failed_count": failed_count,
-                "details": validation_details
-            }
-        }

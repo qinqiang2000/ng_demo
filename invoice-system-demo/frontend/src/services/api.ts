@@ -31,6 +31,15 @@ export const invoiceService = {
   // 交付发票
   deliverInvoice: (data: { invoice_data: any; delivery_channel: string }) => {
     return axios.post(`${API_BASE_URL}/invoice/deliver`, data);
+  },
+
+  // 批量处理发票
+  processBatchInvoices: (formData: FormData) => {
+    return axios.post(`${API_BASE_URL}/invoice/process-batch`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   }
 };
 
