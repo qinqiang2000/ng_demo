@@ -8,7 +8,7 @@
   <cbc:DocumentCurrencyCode>CNY</cbc:DocumentCurrencyCode>
   <cac:AccountingSupplierParty>
     <cac:Party>
-      <cbc:Name>金蝶广州</cbc:Name>
+      <cbc:Name>携程广州</cbc:Name>
     </cac:Party>
   </cac:AccountingSupplierParty>
   <cac:AccountingCustomerParty>

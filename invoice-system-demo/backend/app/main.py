@@ -37,7 +37,7 @@ connector_registry = BusinessConnectorRegistry()
 # 注册路由
 app.include_router(data_router)
 
-# 挂载静态文件服务 - 示例数据
+# 挂载静态文件服务 - 示例数据（统一使用backend/data目录）
 data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
 if os.path.exists(data_dir):
     app.mount("/data", StaticFiles(directory=data_dir), name="data")
@@ -151,8 +151,8 @@ async def get_connectors():
 
 @app.get("/api/sample-data")
 async def get_sample_data():
-    """获取示例数据"""
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data")
+    """获取示例数据（统一使用backend/data目录）"""
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
     sample_files = []
     
     if os.path.exists(data_dir):
