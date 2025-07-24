@@ -119,7 +119,9 @@ const InvoiceProcessor: React.FC = () => {
                 </span>
                 {log.target_field && log.value && (
                   <span style={{ marginLeft: 8, color: '#666' }}>
-                    → {log.target_field} = {log.value}
+                    → {log.item_index !== undefined ? 
+                        log.target_field.replace('items[]', `items[${log.item_index}]`) : 
+                        log.target_field} = {log.value}
                   </span>
                 )}
                 {log.reason && (
