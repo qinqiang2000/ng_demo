@@ -1,0 +1,144 @@
+# 数据库查询模板配置
+# 通过配置文件定义所有数据库查询，避免硬编码
+
+# 查询模板定义
+query_templates:
+  # 通用单字段查询模板
+  single_field_lookup:
+    description: "查询单个字段值"
+    sql_template: "SELECT {return_field} FROM {table} WHERE {where_field} = :value LIMIT 1"
+    cache_ttl: 300  # 缓存时间（秒）
+    
+  # 多条件查询模板  
+  multi_condition_lookup:
+    description: "多条件组合查询"
+    sql_template: "SELECT {return_field} FROM {table} WHERE {conditions} LIMIT 1"
+    cache_ttl: 300
+    
+  # 聚合查询模板
+  aggregate_query:
+    description: "聚合计算查询"
+    sql_template: "SELECT {aggregate_function}({field}) FROM {table} WHERE {conditions}"
+    cache_ttl: 60
+    
+  # 关联查询模板
+  join_query:
+    description: "多表关联查询"
+    sql_template: |
+      SELECT {return_fields} 
+      FROM {main_table} 
+      {joins}
+      WHERE {conditions}
+      LIMIT 1
+    cache_ttl: 300
+
+# 预定义查询配置
+queries:
+  # 根据公司名称查询税号
+  get_tax_number_by_name:
+    template: "single_field_lookup"
+    parameters:
+      table: "companies"
+      return_field: "tax_number"
+      where_field: "company_name"
+    description: "根据公司名称查询税号"
+    fallback_value: null
+    
+  # 根据公司名称查询分类
+  get_company_category_by_name:
+    template: "single_field_lookup"
+    parameters:
+      table: "companies"
+      return_field: "category"
+      where_field: "company_name"
+    description: "根据公司名称查询企业分类"
+    fallback_value: "GENERAL"
+    
+  # 根据分类和金额查询税率
+  get_tax_rate_by_category_and_amount:
+    template: "multi_condition_lookup"
+    parameters:
+      table: "tax_rates"
+      return_field: "rate"
+      conditions: "category = :param1 AND min_amount <= :param2 AND max_amount >= :param2"
+    description: "根据企业分类和金额查询适用税率"
+    fallback_value: 0.06
+    
+  # 查询公司完整信息
+  get_company_info:
+    template: "single_field_lookup"
+    parameters:
+      table: "companies"
+      return_field: "*"
+      where_field: "company_name"
+    description: "查询公司完整信息"
+    result_type: "object"  # 返回对象而非单个值
+    
+  # 查询地址信息
+  get_address_by_company:
+    template: "join_query"
+    parameters:
+      main_table: "companies c"
+      joins: "LEFT JOIN addresses a ON c.id = a.company_id"
+      return_fields: "a.street, a.city, a.postal_code, a.country"
+      conditions: "c.company_name = :param1"
+    description: "根据公司名称查询地址信息"
+    result_type: "object"
+    
+  # 统计查询示例
+  count_invoices_by_supplier:
+    template: "aggregate_query"
+    parameters:
+      table: "invoices"
+      aggregate_function: "COUNT"
+      field: "*"
+      conditions: "supplier_name = :param1 AND invoice_date >= :param2"
+    description: "统计供应商在指定日期后的发票数量"
+    
+  # 查询行业平均税率
+  get_industry_avg_tax_rate:
+    template: "aggregate_query"
+    parameters:
+      table: "tax_rates"
+      aggregate_function: "AVG"
+      field: "rate"
+      conditions: "industry = :param1"
+    description: "查询行业平均税率"
+    fallback_value: 0.06
+
+# 数据源配置
+data_sources:
+  default:
+    type: "sqlite"  # 支持 sqlite, mysql, postgresql, api
+    connection: "invoice_db.sqlite"
+    
+  external_api:
+    type: "api"
+    base_url: "https://api.example.com/v1"
+    auth_type: "bearer"
+    
+  cache:
+    type: "redis"
+    host: "localhost"
+    port: 6379
+    enabled: false  # 默认禁用，生产环境可启用
+
+# 查询执行策略
+execution_strategy:
+  # 查询超时设置（毫秒）
+  query_timeout: 1000
+  
+  # 失败重试次数
+  retry_count: 2
+  
+  # 是否启用查询缓存
+  enable_cache: true
+  
+  # 是否记录查询日志
+  log_queries: true
+  
+  # 批量查询设置
+  batch_size: 100
+  
+  # 并发查询限制
+  max_concurrent_queries: 10

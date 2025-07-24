@@ -103,3 +103,11 @@
 .log-error .log-icon {
   color: #ff4d4f;
 }
+
+.log-skipped {
+  color: #8c8c8c;
+}
+
+.log-skipped .log-icon {
+  color: #8c8c8c;
+}

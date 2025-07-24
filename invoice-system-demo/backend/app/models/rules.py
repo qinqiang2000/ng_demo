@@ -19,6 +19,7 @@ class FieldCompletionRule(BaseRule):
     """字段补全规则"""
     target_field: str  # 目标字段路径(Domain Object)
     rule_expression: str  # 表达式，返回字段值
+    rule_type: str = "DEFAULT"  # DEFAULT: 仅在字段为空时设置, OVERRIDE: 总是覆盖
     
 
 class FieldValidationRule(BaseRule):

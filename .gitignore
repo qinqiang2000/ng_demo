@@ -209,3 +209,4 @@ __marimo__/
 .vscode/
 invoice-system-demo/frontend/node_modules/
 
+.vercel/

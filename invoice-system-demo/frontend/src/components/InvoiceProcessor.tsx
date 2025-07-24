@@ -104,18 +104,34 @@ const InvoiceProcessor: React.FC = () => {
           {logs.map((log: any, logIndex: number) => (
             <div key={logIndex} className={`log-item ${
               log.status === 'success' || log.status === 'passed' ? 'log-success' : 
+              log.status === 'skipped' ? 'log-skipped' :
               log.status === 'failed' ? 'log-warning' : 'log-error'
             }`}>
               <span className="log-icon">
-                {log.status === 'success' || log.status === 'passed' ? '✓' : 
-                 log.status === 'failed' ? '⚠' : '✗'}
+                {log.status === 'success' || log.status === 'passed' ? '✅' : 
+                 log.status === 'skipped' ? '⏭️' :
+                 log.status === 'failed' ? '❌' : '❓'}
               </span>
               <span className="log-message">
                 <strong>{log.rule_name}</strong>
+                <span style={{ marginLeft: 8, fontSize: '12px', color: '#999' }}>
+                  ({log.status})
+                </span>
                 {log.target_field && log.value && (
                   <span style={{ marginLeft: 8, color: '#666' }}>
                     → {log.target_field} = {log.value}
                   </span>
+                )}
+                {log.reason && (
+                  <span style={{ marginLeft: 8, color: '#999', fontSize: '12px' }}>
+                    {log.reason === 'condition_not_met' ? '条件不满足' : 
+                     log.reason === 'inactive' ? '规则未激活' : log.reason}
+                  </span>
+                )}
+                {log.condition && (
+                  <div style={{ marginLeft: 20, fontSize: '11px', color: '#ccc', fontFamily: 'monospace' }}>
+                    条件: {log.condition}
+                  </div>
                 )}
                 {log.error_message && (
                   <span style={{ marginLeft: 8, color: '#faad14' }}>

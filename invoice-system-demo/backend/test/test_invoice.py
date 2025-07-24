@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # 添加项目路径
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 from app.services.invoice_service import InvoiceProcessingService
 from app.services.channel_service import MockChannelService

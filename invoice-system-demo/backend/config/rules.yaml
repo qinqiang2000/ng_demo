@@ -14,15 +14,15 @@ field_completion_rules:
     rule_name: "从数据库补全供应商税号"
     apply_to: "invoice.supplier.tax_no == null"
     target_field: "supplier.tax_no"
-    rule_expression: "db_query_tax_number_by_name(invoice.supplier.name)"
+    rule_expression: "db_query('get_tax_number_by_name', invoice.supplier.name)"
     priority: 90
     active: true
     
   - id: "completion_003"
     rule_name: "从数据库补全客户税号"
-    apply_to: "!has(invoice.customer.tax_no) || invoice.customer.tax_no == ''"
+    apply_to: "invoice.customer.tax_no == null"
     target_field: "customer.tax_no"
-    rule_expression: "db_query_tax_number_by_name(invoice.customer.name)"
+    rule_expression: "db_query('get_tax_number_by_name', invoice.customer.name)"
     priority: 90
     active: true
     
@@ -31,7 +31,7 @@ field_completion_rules:
     rule_name: "获取供应商分类"
     apply_to: "!has(invoice.extensions.supplier_category)"
     target_field: "extensions.supplier_category"
-    rule_expression: "db_query_company_category_by_name(invoice.supplier.name)"
+    rule_expression: "db_query('get_company_category_by_name', invoice.supplier.name)"
     priority: 85
     active: true
     
@@ -39,7 +39,7 @@ field_completion_rules:
     rule_name: "智能税率计算"
     apply_to: "invoice.total_amount > 0 && has(invoice.extensions.supplier_category)"
     target_field: "tax_amount"
-    rule_expression: "invoice.total_amount * db_query_tax_rate_by_category_and_amount(invoice.extensions.supplier_category, invoice.total_amount)"
+    rule_expression: "invoice.total_amount * db_query('get_tax_rate_by_category_and_amount', invoice.extensions.supplier_category, invoice.total_amount)"
     priority: 80
     active: true
     
@@ -74,7 +74,7 @@ field_completion_rules:
     rule_name: "动态税率查询"
     apply_to: "has(invoice.extensions.supplier_category)"
     target_field: "extensions.dynamic_tax_rate"
-    rule_expression: "db_query_tax_rate_by_category_and_amount(invoice.extensions.supplier_category, invoice.total_amount)"
+    rule_expression: "db_query('get_tax_rate_by_category_and_amount', invoice.extensions.supplier_category, invoice.total_amount)"
     priority: 50
     active: true
     
@@ -86,6 +86,39 @@ field_completion_rules:
     rule_expression: "invoice.items.map(item, double(item.quantity)).reduce(sum, sum + _)"
     priority: 45
     active: false  # 复杂表达式示例，默认不启用
+    
+  # 商品项目补全规则 - 通过扩展版规则引擎处理数组（'[]'语法不是CEL语法）
+  - id: "completion_item_001"
+    rule_name: "补全商品标准名称"
+    apply_to: "item.name == null || item.name == ''"
+    target_field: "items[].name"
+    rule_expression: "get_standard_name(item.description)"
+    priority: 95
+    active: true
+    
+  - id: "completion_item_002"  
+    rule_name: "补全商品税率"
+    apply_to: "item.tax_rate == null"
+    target_field: "items[].tax_rate"
+    rule_expression: "get_tax_rate(item.description)"
+    priority: 94
+    active: true
+    
+  - id: "completion_item_003"
+    rule_name: "补全商品税种"
+    apply_to: "item.tax_category == null || item.tax_category == ''"
+    target_field: "items[].tax_category"
+    rule_expression: "get_tax_category(item.description)"
+    priority: 93
+    active: true
+    
+  - id: "completion_item_004"
+    rule_name: "计算商品税额"
+    apply_to: "has(item.tax_rate) && item.tax_rate > 0 && (!has(item.tax_amount) || item.tax_amount == null)"
+    target_field: "items[].tax_amount"
+    rule_expression: "item.amount * item.tax_rate"
+    priority: 92
+    active: false
 
 # 字段校验规则配置
 field_validation_rules:
@@ -161,7 +194,7 @@ field_validation_rules:
     rule_name: "验证供应商在数据库中存在"
     apply_to: "has(invoice.supplier.name) && invoice.supplier.name != ''"
     field_path: "supplier.name"
-    rule_expression: "db_query_tax_number_by_name(invoice.supplier.name) != null"
+    rule_expression: "db_query('get_tax_number_by_name', invoice.supplier.name) != null"
     error_message: "供应商在系统数据库中不存在，请先在数据管理中添加该企业"
     priority: 75
     active: false  # 默认禁用，演示时可启用

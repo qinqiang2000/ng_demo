@@ -36,11 +36,13 @@ Key architectural patterns:
 
 ### Backend (Python)
 ```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
+cd invoice-system-demo/backend
+source .venv/bin/activate  # ALWAYS activate virtual environment first!
 pip install -r requirements.txt
 python3 -m uvicorn app.main:app --reload --port 8000
 ```
+
+**IMPORTANT**: Always use the virtual environment at `invoice-system-demo/backend/.venv` - do NOT install packages globally!
 
 ### Frontend (React)
 ```bash
@@ -53,8 +55,10 @@ npm test
 
 ### Testing
 ```bash
-cd backend
+cd invoice-system-demo/backend
+source .venv/bin/activate  # ALWAYS activate virtual environment first!
 python test_invoice.py  # Run integration tests
+python test_final_query_system.py  # Test flexible query system
 ```
 
 ## Core Concepts

@@ -29,6 +29,7 @@ class InvoiceItem(BaseModel):
     """发票项目明细"""
     item_id: str
     description: str
+    name: Optional[str] = None  # 标准商品名称（用于开票）
     product_code: Optional[str] = None
     quantity: Decimal
     unit: str = "EA"

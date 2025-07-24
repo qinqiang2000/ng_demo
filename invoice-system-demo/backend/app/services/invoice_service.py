@@ -7,7 +7,7 @@ from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule, FieldValidationRule
 from ..core.kdubl_converter import KDUBLDomainConverter
 from ..core.rule_engine import FieldCompletionEngine, BusinessValidationEngine
-from ..core.cel_engine import DatabaseCELFieldCompletionEngine, DatabaseCELBusinessValidationEngine
+from ..core.cel_engine import CELFieldCompletionEngine, CELBusinessValidationEngine, DatabaseCELFieldCompletionEngine, DatabaseCELBusinessValidationEngine
 
 
 class InvoiceProcessingService:
@@ -22,8 +22,8 @@ class InvoiceProcessingService:
             self.completion_engine = DatabaseCELFieldCompletionEngine(db_session)
             self.validation_engine = DatabaseCELBusinessValidationEngine(db_session)
         else:
-            self.completion_engine = FieldCompletionEngine()
-            self.validation_engine = BusinessValidationEngine()
+            self.completion_engine = CELFieldCompletionEngine()
+            self.validation_engine = CELBusinessValidationEngine()
         
         self._load_rules()
     

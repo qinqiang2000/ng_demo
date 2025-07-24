@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule, FieldValidationRule
 from ..database.crud import DatabaseQueryHelper
+from .flexible_db_query import db_query
 import operator
 
 
@@ -24,8 +25,8 @@ class DatabaseExpressionEvaluator:
             '>=': operator.ge,
             '<': operator.lt,
             '<=': operator.le,
-            'AND': operator.and_,
-            'OR': operator.or_,
+            '&&': lambda x, y: bool(x) and bool(y),
+            '||': lambda x, y: bool(x) or bool(y),
         }
     
     async def evaluate(self, expression: str, context: Dict[str, Any]) -> Any:
@@ -34,7 +35,7 @@ class DatabaseExpressionEvaluator:
         print(f"[DEBUG] 求值表达式: '{expression}'")
         
         # 处理数据库查询函数
-        if expression.startswith('db_query_'):
+        if expression.startswith('db_query('):
             return await self._handle_db_query(expression, context)
         
         # 处理字符串字面量
@@ -117,10 +118,8 @@ class DatabaseExpressionEvaluator:
                         return left != right
                     elif op_str in ['>', '>=', '<', '<=']:
                         return False  # None值的数值比较返回False
-                    elif op_str == 'AND':
-                        return False  # None在逻辑运算中视为False
-                    elif op_str == 'OR':
-                        return left or right
+                    elif op_str == '||':
+                        return bool(left) or bool(right)
                 
                 return op_func(left, right)
         
@@ -132,70 +131,67 @@ class DatabaseExpressionEvaluator:
         return self._get_field_value(expression, context)
     
     async def _handle_db_query(self, expression: str, context: Dict[str, Any]) -> Any:
-        """处理数据库查询函数"""
+        """处理数据库查询函数 - 使用新的灵活查询系统"""
         print(f"[DEBUG] 处理数据库查询: {expression}")
         
-        if not self.db_session:
-            print(f"[DEBUG] 数据库会话为空")
-            return None
-        
         try:
-            # 解析函数调用
-            func_name = expression.split('(')[0]
-            params_str = expression[expression.index('(') + 1:expression.rindex(')')]
-            params = [p.strip().strip('"\'') for p in params_str.split(',')]
+            # 解析函数调用 db_query('query_name', param1, param2, ...)
+            if not expression.startswith('db_query('):
+                return None
+                
+            params_str = expression[9:-1]  # 移除 'db_query(' 和 ')'
+            params = []
             
-            print(f"[DEBUG] 函数名: {func_name}, 原始参数: {params}")
+            # 解析参数，处理引号和逗号
+            current_param = ''
+            in_quotes = False
+            quote_char = None
             
-            # 替换参数中的字段引用
-            for i, param in enumerate(params):
+            for char in params_str:
+                if char in ['"', "'"] and not in_quotes:
+                    in_quotes = True
+                    quote_char = char
+                elif char == quote_char and in_quotes:
+                    in_quotes = False
+                    quote_char = None
+                elif char == ',' and not in_quotes:
+                    params.append(current_param.strip())
+                    current_param = ''
+                    continue
+                current_param += char
+                
+            if current_param:
+                params.append(current_param.strip())
+            
+            # 第一个参数是查询名称
+            if not params:
+                return None
+                
+            query_name = params[0].strip('"\'')
+            query_params = []
+            
+            # 处理其余参数
+            for param in params[1:]:
+                param = param.strip()
+                # 处理字段引用
                 if param.startswith('invoice.'):
                     field_value = self._get_field_value(param, context)
                     print(f"[DEBUG] 字段 {param} 的值: {field_value}")
-                    if field_value is None:
-                        print(f"[DEBUG] 数据库查询参数为空: {param}")
-                        return None
-                    params[i] = field_value
+                    query_params.append(field_value)
+                else:
+                    # 处理字符串字面量
+                    query_params.append(param.strip('"\''))
             
-            print(f"[DEBUG] 处理后的参数: {params}")
+            print(f"[DEBUG] 查询名称: {query_name}, 参数: {query_params}")
             
-            # 执行数据库查询
-            if func_name == 'db_query_tax_number_by_name':
-                if params[0] is None or params[0] == '':
-                    print(f"[DEBUG] 企业名称为空，跳过查询")
-                    return None
-                
-                result = await DatabaseQueryHelper.get_company_tax_number_by_name(
-                    self.db_session, str(params[0])
-                )
-                print(f"[DEBUG] 税号查询结果: {result}")
-                return result
-            elif func_name == 'db_query_tax_rate_by_category_and_amount':
-                if params[0] is None or params[0] == '':
-                    print(f"企业分类为空，使用默认税率")
-                    return 0.06  # 返回默认税率
-                try:
-                    amount = float(params[1])
-                    result = await DatabaseQueryHelper.get_tax_rate_by_category_and_amount(
-                        self.db_session, str(params[0]), amount
-                    )
-                    return result if result is not None else 0.06  # 默认税率
-                except (ValueError, TypeError):
-                    print(f"金额参数错误: {params[1]}")
-                    return 0.06
-            elif func_name == 'db_query_company_category_by_name':
-                if params[0] is None or params[0] == '':
-                    return 'GENERAL'  # 返回默认分类
-                result = await DatabaseQueryHelper.get_company_category_by_name(
-                    self.db_session, str(params[0])
-                )
-                return result if result is not None else 'GENERAL'  # 默认分类
+            # 调用灵活查询系统
+            result = await db_query(query_name, *query_params)
+            print(f"[DEBUG] 查询结果: {result}")
+            return result
             
         except Exception as e:
             print(f"数据库查询错误: {expression} - {str(e)}")
             return None
-        
-        return None
     
     async def _handle_contains(self, expression: str, context: Dict[str, Any]) -> bool:
         """处理contains函数"""
