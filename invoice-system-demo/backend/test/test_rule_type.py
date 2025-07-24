@@ -9,7 +9,7 @@ from datetime import date
 from app.models.domain import InvoiceDomainObject, Party, InvoiceItem
 from app.models.rules import FieldCompletionRule
 # 直接导入我们修改的类
-from app.core.rule_engine import SimpleExpressionEvaluator
+from app.core.cel_engine import CELExpressionEvaluator
 
 def test_default_rule_type():
     """测试DEFAULT类型不覆盖已有值"""
@@ -40,7 +40,7 @@ def test_default_rule_type():
     # 手动创建简化版引擎来测试我们的修改
     class TestFieldCompletionEngine:
         def __init__(self):
-            self.evaluator = SimpleExpressionEvaluator()
+            self.evaluator = CELExpressionEvaluator()
             self.rules = []
             self.execution_log = []
         
@@ -118,7 +118,7 @@ def test_override_rule_type():
     # 手动创建简化版引擎来测试我们的修改
     class TestFieldCompletionEngine:
         def __init__(self):
-            self.evaluator = SimpleExpressionEvaluator()
+            self.evaluator = CELExpressionEvaluator()
             self.rules = []
             self.execution_log = []
         
@@ -196,7 +196,7 @@ def test_default_behavior():
     # 手动创建简化版引擎来测试我们的修改
     class TestFieldCompletionEngine:
         def __init__(self):
-            self.evaluator = SimpleExpressionEvaluator()
+            self.evaluator = CELExpressionEvaluator()
             self.rules = []
             self.execution_log = []
         

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.domain import InvoiceDomainObject
 from ..models.rules import FieldCompletionRule
 from ..database.crud import DatabaseQueryHelper
-from .flexible_db_query import FlexibleDatabaseQuery
 from ..utils.logger import get_logger
 
 # 创建logger
@@ -565,9 +564,9 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
     async def evaluate_async(self, expression: str, context: Dict[str, Any]) -> Any:
         """异步计算表达式，支持数据库查询"""
         try:
-            # 检查是否包含新的db_query函数
-            if 'db_query(' in expression:
-                return await self._evaluate_with_flexible_db_queries(expression, context)
+            # 检查是否包含数据库查询函数（支持通用db_query和具体函数名）
+            if 'db_query(' in expression or any(func in expression for func in ['db_query_tax_number_by_name(', 'db_query_tax_rate_by_category_and_amount(', 'db_query_company_category_by_name(']):
+                return await self._evaluate_with_db_queries(expression, context)
             else:
                 # 使用标准CEL评估
                 return self.evaluate(expression, context)
@@ -575,116 +574,7 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
             print(f"CEL表达式执行错误: {expression} - {str(e)}")
             return None
     
-    async def _evaluate_with_flexible_db_queries(self, expression: str, context: Dict[str, Any]) -> Any:
-        """处理包含灵活db_query函数的表达式"""
-        try:
-            # 创建查询处理器
-            query_handler = FlexibleDatabaseQuery()
-            
-            # 处理数据库查询函数
-            processed_expression = expression
-            
-            # 使用正则表达式查找所有db_query调用
-            import re
-            pattern = r'db_query\(([^)]+)\)'
-            
-            for match in re.finditer(pattern, expression):
-                full_match = match.group(0)
-                params_str = match.group(1)
-                
-                # 解析参数
-                params = self._parse_db_query_params(params_str, context)
-                if not params:
-                    processed_expression = processed_expression.replace(full_match, 'null')
-                    continue
-                
-                # 执行查询
-                query_name = params[0]
-                query_params = params[1:]
-                
-                try:
-                    result = await query_handler.query(query_name, *query_params)
-                    
-                    # 根据结果类型转换为CEL字面量
-                    if result is None:
-                        replacement = 'null'
-                    elif isinstance(result, str):
-                        replacement = f'"{result}"'
-                    elif isinstance(result, (int, float)):
-                        replacement = str(result)
-                    elif isinstance(result, bool):
-                        replacement = 'true' if result else 'false'
-                    else:
-                        replacement = f'"{str(result)}"'
-                    
-                    processed_expression = processed_expression.replace(full_match, replacement)
-                    
-                except Exception as e:
-                    print(f"数据库查询执行错误: {query_name} - {str(e)}")
-                    processed_expression = processed_expression.replace(full_match, 'null')
-            
-            # 使用CEL计算处理后的表达式
-            return self.evaluate(processed_expression, context)
-            
-        except Exception as e:
-            print(f"灵活数据库查询表达式处理错误: {expression} - {str(e)}")
-            return None
-    
-    def _parse_db_query_params(self, params_str: str, context: Dict[str, Any]) -> Optional[List[str]]:
-        """解析db_query函数的参数"""
-        try:
-            params = []
-            current_param = ''
-            in_quotes = False
-            quote_char = None
-            
-            for char in params_str:
-                if char in ['"', "'"] and not in_quotes:
-                    in_quotes = True
-                    quote_char = char
-                elif char == quote_char and in_quotes:
-                    in_quotes = False
-                    quote_char = None
-                elif char == ',' and not in_quotes:
-                    params.append(current_param.strip())
-                    current_param = ''
-                    continue
-                current_param += char
-                
-            if current_param:
-                params.append(current_param.strip())
-            
-            # 处理参数值
-            processed_params = []
-            for param in params:
-                param = param.strip()
-                if param.startswith('"') and param.endswith('"'):
-                    # 字符串字面量
-                    processed_params.append(param[1:-1])
-                elif param.startswith("'") and param.endswith("'"):
-                    # 字符串字面量
-                    processed_params.append(param[1:-1])
-                elif param.startswith('invoice.'):
-                    # 字段引用
-                    field_value = self._get_field_value_from_context(param, context)
-                    processed_params.append(field_value)
-                else:
-                    # 数字或其他字面量
-                    try:
-                        # 尝试转换为数字
-                        if '.' in param:
-                            processed_params.append(float(param))
-                        else:
-                            processed_params.append(int(param))
-                    except ValueError:
-                        # 作为字符串处理
-                        processed_params.append(param)
-            
-            return processed_params
-            
-        except Exception as e:
-            print(f"参数解析错误: {params_str} - {str(e)}")
-            return None
+
     
     async def _evaluate_with_db_queries(self, expression: str, context: Dict[str, Any]) -> Any:
         """处理包含数据库查询的表达式"""
@@ -695,6 +585,10 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
         try:
             # 处理数据库查询函数
             processed_expression = expression
+            
+            # 处理通用 db_query 函数
+            if 'db_query(' in expression:
+                processed_expression = await self._replace_generic_db_query(processed_expression, context)
             
             # 处理 db_query_tax_number_by_name
             if 'db_query_tax_number_by_name(' in expression:
@@ -717,6 +611,65 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
         except Exception as e:
             print(f"数据库查询表达式处理错误: {expression} - {str(e)}")
             return None
+    
+    async def _replace_generic_db_query(self, expression: str, context: Dict[str, Any]) -> str:
+        """替换通用db_query函数调用"""
+        import re
+        pattern = r"db_query\('([^']+)'(?:,\s*([^)]+))?\)"
+        
+        for match in re.finditer(pattern, expression):
+            query_name = match.group(1)
+            params_str = match.group(2) if match.group(2) else None
+            
+            # 解析参数
+            params = []
+            if params_str:
+                # 简单的参数解析，支持字符串和字段引用
+                param_parts = [p.strip() for p in params_str.split(',')]
+                for param in param_parts:
+                    if param.startswith("'") and param.endswith("'"):
+                        # 字符串字面量
+                        params.append(param[1:-1])
+                    elif param.startswith('"') and param.endswith('"'):
+                        # 字符串字面量
+                        params.append(param[1:-1])
+                    else:
+                        # 字段引用
+                        field_value = self._get_field_value_from_context(param, context)
+                        params.append(field_value)
+            
+            # 根据查询名称调用相应的数据库查询
+            result = None
+            try:
+                if query_name == 'get_tax_number_by_name' and len(params) >= 1:
+                    result = await DatabaseQueryHelper.get_company_tax_number_by_name(self.db_session, params[0])
+                    replacement = f'"{result}"' if result else '""'
+                elif query_name == 'get_company_category_by_name' and len(params) >= 1:
+                    result = await DatabaseQueryHelper.get_company_category_by_name(self.db_session, params[0])
+                    replacement = f'"{result}"' if result else '"GENERAL"'
+                elif query_name == 'get_tax_rate_by_category_and_amount' and len(params) >= 2:
+                    result = await DatabaseQueryHelper.get_tax_rate_by_category_and_amount(self.db_session, params[0], float(params[1]))
+                    replacement = str(result) if result else '0.06'
+                else:
+                    # 未知查询类型，返回默认值
+                    replacement = 'null'
+                
+                expression = expression.replace(match.group(0), replacement)
+                
+            except Exception as e:
+                print(f"数据库查询执行错误: {query_name} - {str(e)}")
+                # 根据查询类型返回默认值
+                if 'tax_number' in query_name:
+                    replacement = '""'
+                elif 'category' in query_name:
+                    replacement = '"GENERAL"'
+                elif 'tax_rate' in query_name:
+                    replacement = '0.06'
+                else:
+                    replacement = 'null'
+                expression = expression.replace(match.group(0), replacement)
+        
+        return expression
     
     async def _replace_db_query_tax_number(self, expression: str, context: Dict[str, Any]) -> str:
         """替换税号查询函数"""

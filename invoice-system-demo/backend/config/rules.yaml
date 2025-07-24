@@ -11,28 +11,28 @@ field_completion_rules:
     
   # 数据库查询补全示例
   - id: "completion_002"
-    rule_name: "从数据库补全供应商税号"
+    rule_name: "从DB补全供应商税号"
     apply_to: "invoice.supplier.tax_no == null"
     target_field: "supplier.tax_no"
     rule_expression: "db_query('get_tax_number_by_name', invoice.supplier.name)"
-    priority: 90
+    priority: 100
     active: true
     
   - id: "completion_003"
-    rule_name: "从数据库补全客户税号"
+    rule_name: "从DB补全客户税号"
     apply_to: "invoice.customer.tax_no == null"
     target_field: "customer.tax_no"
     rule_expression: "db_query('get_tax_number_by_name', invoice.customer.name)"
-    priority: 90
+    priority: 100
     active: true
     
   # 根据企业分类从数据库获取税率（分步计算）
   - id: "completion_004a"
-    rule_name: "获取供应商分类"
+    rule_name: "从DB获取供应商分类"
     apply_to: "!has(invoice.extensions.supplier_category)"
     target_field: "extensions.supplier_category"
     rule_expression: "db_query('get_company_category_by_name', invoice.supplier.name)"
-    priority: 85
+    priority: 99
     active: true
     
   - id: "completion_004b"
