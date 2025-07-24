@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 
 from .services.invoice_service import InvoiceProcessingService
+from .services.batch_invoice_service import BatchInvoiceProcessingService
 from .services.channel_service import MockChannelService
 from .connectors.base import BusinessConnectorRegistry
 from .database.connection import init_database, get_db
@@ -55,6 +56,13 @@ class DeliverInvoiceRequest(BaseModel):
     delivery_channel: str = "email"
 
 
+class BatchProcessRequest(BaseModel):
+    """批量处理请求"""
+    source_system: str = "ERP"
+    merge_strategy: str = "none"
+    merge_config: Optional[Dict[str, Any]] = None
+
+
 @app.get("/")
 async def root():
     """根路径"""
@@ -63,6 +71,7 @@ async def root():
         "version": "0.1.0",
         "endpoints": {
             "process": "/api/invoice/process",
+            "process_batch": "/api/invoice/process-batch",
             "validate": "/api/invoice/validate", 
             "rules": "/api/rules",
             "connectors": "/api/connectors",
@@ -99,6 +108,39 @@ async def process_invoice_file(file: UploadFile = File(...), source_system: str 
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/invoice/process-batch")
+async def process_batch_invoices(
+    files: List[UploadFile] = File(...),
+    source_system: str = "ERP",
+    merge_strategy: str = "none",
+    db: AsyncSession = Depends(get_db)
+):
+    """批量处理发票文件 - 包含补全、合并、校验全流程"""
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="至少需要上传一个文件")
+        
+        if len(files) > 50:  # 限制批量处理文件数量
+            raise HTTPException(status_code=400, detail="批量处理文件数量不能超过50个")
+        
+        # 创建批量处理服务
+        batch_service = BatchInvoiceProcessingService(db)
+        
+        # 执行批量处理
+        result = await batch_service.process_batch_invoices(
+            xml_files=files,
+            source_system=source_system,
+            merge_strategy=merge_strategy
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量处理失败: {str(e)}")
 
 
 @app.post("/api/invoice/validate-compliance")
