@@ -166,7 +166,7 @@ field_validation_rules:
     rule_name: "旅游服务发票项目校验"
     apply_to: "has(invoice.extensions.supplier_category) && invoice.extensions.supplier_category == 'TRAVEL_SERVICE'"
     field_path: "items"
-    rule_expression: "invoice.items.all(item, item.description.matches('^(住房|早餐|晚餐|停车费|交通费).*'))"
+    rule_expression: "invoice.items.all(item, item.name.matches('^(住宿|住房|餐饮|早餐|晚餐|停车费|交通费).*'))"
     error_message: "旅游服务发票项目描述不规范，应包含：住房、餐饮、交通等标准服务项目"
     priority: 75
     active: true

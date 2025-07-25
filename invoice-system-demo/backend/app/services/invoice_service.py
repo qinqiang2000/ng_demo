@@ -237,27 +237,25 @@ class InvoiceProcessingService:
                         # 因此不再将验证日志分配到具体的文件详情中
                         # 验证日志将统一存储在全局execution_details中
                         
-                        if is_valid:
-                            # 转换为KDUBL
-                            processed_kdubl = self.converter.build(invoice)
-                            result["results"].append({
-                                "invoice_id": f"output_{i+1}",
-                                "invoice_number": invoice.invoice_number,
-                                "success": True,
-                                "data": {
-                                    "domain_object": invoice.dict(),
-                                    "processed_kdubl": processed_kdubl
-                                },
-                                "source_system": source_system
-                            })
-                        else:
-                            result["results"].append({
-                                "invoice_id": f"output_{i+1}",
-                                "invoice_number": invoice.invoice_number,
-                                "success": False,
-                                "errors": errors,
-                                "source_system": source_system
-                            })
+                        # 无论校验是否成功，都转换为KDUBL并返回完整数据
+                        processed_kdubl = self.converter.build(invoice)
+                        
+                        result_item = {
+                            "invoice_id": f"output_{i+1}",
+                            "invoice_number": invoice.invoice_number,
+                            "success": is_valid,
+                            "data": {
+                                "domain_object": invoice.dict(),
+                                "processed_kdubl": processed_kdubl
+                            },
+                            "source_system": source_system
+                        }
+                        
+                        # 如果校验失败，添加错误信息
+                        if not is_valid:
+                            result_item["errors"] = errors
+                            
+                        result["results"].append(result_item)
                     except Exception as e:
                         result["results"].append({
                             "invoice_id": f"output_{i+1}",
