@@ -6,10 +6,8 @@ import {
   ApiOutlined,
   CheckCircleOutlined,
   DatabaseOutlined,
-  AppstoreOutlined,
 } from '@ant-design/icons';
 import InvoiceProcessor from './components/InvoiceProcessor';
-import BatchInvoiceProcessor from './components/BatchInvoiceProcessor';
 import RulesManager from './components/RulesManager';
 import ConnectorList from './components/ConnectorList';
 import DataManagement from './components/DataManagement';
@@ -28,12 +26,10 @@ const App: React.FC = () => {
       case '1':
         return <InvoiceProcessor />;
       case '2':
-        return <BatchInvoiceProcessor />;
-      case '3':
         return <RulesManager />;
-      case '4':
+      case '3':
         return <ConnectorList />;
-      case '5':
+      case '4':
         return <DataManagement />;
       default:
         return <InvoiceProcessor />;
@@ -63,21 +59,16 @@ const App: React.FC = () => {
               },
               {
                 key: '2',
-                icon: <AppstoreOutlined />,
-                label: '批量处理',
-              },
-              {
-                key: '3',
                 icon: <SettingOutlined />,
                 label: '规则管理',
               },
               {
-                key: '4',
+                key: '3',
                 icon: <ApiOutlined />,
                 label: '连接器',
               },
               {
-                key: '5',
+                key: '4',
                 icon: <DatabaseOutlined />,
                 label: '数据管理',
               },

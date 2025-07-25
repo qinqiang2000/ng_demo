@@ -3,13 +3,32 @@ import axios from 'axios';
 const API_BASE_URL = '/api';
 
 export const invoiceService = {
-  // 处理发票
-  processInvoice: (data: { kdubl_xml: string; source_system: string }) => {
+  // 统一发票处理 - JSON格式（支持单张和批量）
+  processInvoices: (data: { 
+    kdubl_xml?: string; 
+    kdubl_list?: string[];
+    source_system: string;
+    merge_strategy?: string;
+    merge_config?: any;
+  }) => {
     return axios.post(`${API_BASE_URL}/invoice/process`, data);
   },
 
+  // 统一发票处理 - 文件上传（支持单张和批量）
+  processInvoiceFiles: (formData: FormData) => {
+    return axios.post(`${API_BASE_URL}/invoice/process-files`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
   // 合规性校验
-  validateCompliance: (data: { kdubl_xml: string; source_system: string }) => {
+  validateCompliance: (data: { 
+    kdubl_xml?: string; 
+    kdubl_list?: string[];
+    source_system: string;
+  }) => {
     return axios.post(`${API_BASE_URL}/invoice/validate-compliance`, data);
   },
 
@@ -33,13 +52,18 @@ export const invoiceService = {
     return axios.post(`${API_BASE_URL}/invoice/deliver`, data);
   },
 
-  // 批量处理发票
-  processBatchInvoices: (formData: FormData) => {
-    return axios.post(`${API_BASE_URL}/invoice/process-batch`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+  // 兼容性方法 - 单张发票处理（内部调用统一接口）
+  processInvoice: (data: { kdubl_xml: string; source_system: string }) => {
+    return invoiceService.processInvoices({
+      kdubl_xml: data.kdubl_xml,
+      source_system: data.source_system,
+      merge_strategy: 'none'
     });
+  },
+
+  // 兼容性方法 - 批量发票处理（内部调用统一接口）
+  processBatchInvoices: (formData: FormData) => {
+    return invoiceService.processInvoiceFiles(formData);
   }
 };
 

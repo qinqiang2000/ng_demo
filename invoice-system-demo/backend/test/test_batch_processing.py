@@ -7,7 +7,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.services.batch_invoice_service import BatchInvoiceProcessingService
+from app.services.invoice_service import InvoiceProcessingService
 from app.core.invoice_merge_engine import MergeStrategy
 from app.database.connection import init_database, get_db
 from fastapi import UploadFile
@@ -31,7 +31,7 @@ class MockUploadFile:
 
 async def test_batch_processing():
     """测试批量处理功能"""
-    print("=== 测试批量发票处理功能 ===\n")
+    print("=== 测试统一发票处理功能（批量模式）===\n")
     
     # 初始化数据库
     await init_database()
@@ -56,12 +56,12 @@ async def test_batch_processing():
     # 获取数据库会话
     async for db_session in get_db():
         try:
-            # 创建批量处理服务
-            batch_service = BatchInvoiceProcessingService(db_session)
+            # 创建统一处理服务
+            invoice_service = InvoiceProcessingService(db_session)
             
             print("\n=== 测试1: 无合并策略批量处理 ===")
-            result1 = await batch_service.process_batch_invoices(
-                xml_files=mock_files,
+            result1 = await invoice_service.process_invoices(
+                inputs=mock_files,
                 source_system="ERP",
                 merge_strategy="none"
             )
@@ -69,44 +69,63 @@ async def test_batch_processing():
             print(f"批次ID: {result1['batch_id']}")
             print(f"处理时间: {result1['processing_time']}")
             print(f"总体成功: {result1['success']}")
-            print(f"总文件数: {result1['total_files']}")
+            print(f"总输入数: {result1['total_inputs']}")
             
-            print("\n--- 补全阶段结果 ---")
-            completion = result1['stages']['completion']
-            print(f"成功: {completion['successful_count']}, 失败: {completion['failed_count']}")
+            print("\n--- 处理摘要 ---")
+            summary = result1['summary']
+            print(f"成功输入: {summary['successful_inputs']}, 失败输入: {summary['failed_inputs']}")
+            print(f"输出发票数: {summary['total_output_invoices']}")
             
-            print("\n--- 合并阶段结果 ---")
-            merge = result1['stages']['merge']
-            print(f"输入发票数: {merge['input_invoices']}, 输出发票数: {merge['output_invoices']}")
-            print(f"合并策略: {merge['merge_strategy']}")
-            
-            print("\n--- 校验阶段结果 ---")
-            validation = result1['stages']['validation']
-            print(f"通过: {validation['passed_count']}, 失败: {validation['failed_count']}")
+            print("\n--- 文件映射状态 ---")
+            for mapping in result1['file_mapping']:
+                status = "✓" if mapping['success'] else "✗"
+                print(f"{status} {mapping['filename']}: {mapping.get('invoice_number', mapping.get('error', 'unknown'))}")
             
             print("\n--- 最终结果 ---")
             for result in result1['results']:
-                print(f"发票 {result['invoice_id']}: {result['success']}")
+                print(f"发票 {result['invoice_id']}: {'✓' if result['success'] else '✗'}")
                 if result['success']:
                     print(f"  发票号: {result['invoice_number']}")
                 else:
                     print(f"  错误: {result.get('errors', [])}")
             
             print("\n=== 测试2: 按客户合并策略 ===")
-            result2 = await batch_service.process_batch_invoices(
-                xml_files=mock_files,
+            result2 = await invoice_service.process_invoices(
+                inputs=mock_files,
                 source_system="ERP",
                 merge_strategy="by_customer"
             )
             
             print(f"批次ID: {result2['batch_id']}")
-            print(f"合并策略: {result2['stages']['merge']['merge_strategy']}")
-            print(f"合并前: {result2['stages']['merge']['input_invoices']} 张发票")
-            print(f"合并后: {result2['stages']['merge']['output_invoices']} 张发票")
+            print(f"总输入数: {result2['total_inputs']}")
+            print(f"输出发票数: {result2['summary']['total_output_invoices']}")
             
-            print("\n--- 合并执行日志 ---")
-            for log in result2['stages']['merge']['execution_log']:
-                print(f"  {log}")
+            print("\n--- 执行日志 ---")
+            if result2['execution_details']['completion_logs']:
+                print("补全日志:")
+                for log in result2['execution_details']['completion_logs']:
+                    print(f"  {log}")
+            
+            if result2['execution_details']['validation_logs']:
+                print("校验日志:")
+                for log in result2['execution_details']['validation_logs']:
+                    print(f"  {log}")
+            
+            print("\n=== 测试3: 单张发票处理（作为批量的特例）===")
+            # 测试单张发票
+            with open(xml_files[0], 'r', encoding='utf-8') as f:
+                single_xml = f.read()
+            
+            result3 = await invoice_service.process_invoices(
+                inputs=single_xml,
+                source_system="ERP",
+                merge_strategy="none"
+            )
+            
+            print(f"批次ID: {result3['batch_id']}")
+            print(f"总输入数: {result3['total_inputs']}")
+            print(f"输出发票数: {result3['summary']['total_output_invoices']}")
+            print(f"处理成功: {result3['success']}")
             
             print("\n=== 测试完成 ===")
             

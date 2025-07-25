@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional, List
 import os
 
 from .services.invoice_service import InvoiceProcessingService
-from .services.batch_invoice_service import BatchInvoiceProcessingService
 from .services.channel_service import MockChannelService
 from .connectors.base import BusinessConnectorRegistry
 from .database.connection import init_database, get_db
@@ -44,23 +43,19 @@ if os.path.exists(data_dir):
     app.mount("/data", StaticFiles(directory=data_dir), name="data")
 
 
-class ProcessInvoiceRequest(BaseModel):
-    """处理发票请求"""
-    kdubl_xml: str
+class ProcessInvoicesRequest(BaseModel):
+    """统一发票处理请求"""
+    kdubl_xml: Optional[str] = None  # 单张发票的XML字符串
+    kdubl_list: Optional[List[str]] = None  # 多张发票的XML字符串列表
     source_system: str = "ERP"
+    merge_strategy: str = "none"
+    merge_config: Optional[Dict[str, Any]] = None
 
 
 class DeliverInvoiceRequest(BaseModel):
     """交付发票请求"""
     invoice_data: Dict[str, Any]
     delivery_channel: str = "email"
-
-
-class BatchProcessRequest(BaseModel):
-    """批量处理请求"""
-    source_system: str = "ERP"
-    merge_strategy: str = "none"
-    merge_config: Optional[Dict[str, Any]] = None
 
 
 @app.get("/")
@@ -71,7 +66,7 @@ async def root():
         "version": "0.1.0",
         "endpoints": {
             "process": "/api/invoice/process",
-            "process_batch": "/api/invoice/process-batch",
+            "process_files": "/api/invoice/process-files",
             "validate": "/api/invoice/validate", 
             "rules": "/api/rules",
             "connectors": "/api/connectors",
@@ -81,43 +76,44 @@ async def root():
 
 
 @app.post("/api/invoice/process")
-async def process_invoice(request: ProcessInvoiceRequest, db: AsyncSession = Depends(get_db)):
-    """处理发票 - 包括解析、补全、校验"""
+async def process_invoices_json(request: ProcessInvoicesRequest, db: AsyncSession = Depends(get_db)):
+    """处理发票 - JSON格式输入（支持单张和批量）"""
     try:
         # 使用数据库会话创建发票服务
         invoice_service_with_db = InvoiceProcessingService(db)
-        result = await invoice_service_with_db.process_kdubl_invoice(
-            request.kdubl_xml,
-            request.source_system
+        
+        # 确定输入数据
+        if request.kdubl_xml:
+            # 单张发票
+            inputs = request.kdubl_xml
+        elif request.kdubl_list:
+            # 批量发票
+            inputs = request.kdubl_list
+        else:
+            raise HTTPException(status_code=400, detail="必须提供 kdubl_xml 或 kdubl_list")
+        
+        result = await invoice_service_with_db.process_invoices(
+            inputs=inputs,
+            source_system=request.source_system,
+            merge_strategy=request.merge_strategy,
+            merge_config=request.merge_config
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/invoice/process-file")
-async def process_invoice_file(file: UploadFile = File(...), source_system: str = "ERP", db: AsyncSession = Depends(get_db)):
-    """处理上传的发票文件"""
-    try:
-        content = await file.read()
-        kdubl_xml = content.decode('utf-8')
-        
-        # 使用数据库会话创建发票服务
-        invoice_service_with_db = InvoiceProcessingService(db)
-        result = await invoice_service_with_db.process_kdubl_invoice(kdubl_xml, source_system)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/invoice/process-batch")
-async def process_batch_invoices(
+@app.post("/api/invoice/process-files")
+async def process_invoice_files(
     files: List[UploadFile] = File(...),
     source_system: str = "ERP",
     merge_strategy: str = "none",
+    merge_config: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """批量处理发票文件 - 包含补全、合并、校验全流程"""
+    """处理上传的发票文件（支持单张和批量）"""
     try:
         if not files:
             raise HTTPException(status_code=400, detail="至少需要上传一个文件")
@@ -125,14 +121,24 @@ async def process_batch_invoices(
         if len(files) > 50:  # 限制批量处理文件数量
             raise HTTPException(status_code=400, detail="批量处理文件数量不能超过50个")
         
-        # 创建批量处理服务
-        batch_service = BatchInvoiceProcessingService(db)
+        # 解析合并配置
+        parsed_merge_config = None
+        if merge_config:
+            try:
+                import json
+                parsed_merge_config = json.loads(merge_config)
+            except:
+                raise HTTPException(status_code=400, detail="merge_config 必须是有效的JSON字符串")
         
-        # 执行批量处理
-        result = await batch_service.process_batch_invoices(
-            xml_files=files,
+        # 使用数据库会话创建发票服务
+        invoice_service_with_db = InvoiceProcessingService(db)
+        
+        # 执行统一处理
+        result = await invoice_service_with_db.process_invoices(
+            inputs=files,
             source_system=source_system,
-            merge_strategy=merge_strategy
+            merge_strategy=merge_strategy,
+            merge_config=parsed_merge_config
         )
         
         return result
@@ -140,15 +146,20 @@ async def process_batch_invoices(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"批量处理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"文件处理失败: {str(e)}")
 
 
 @app.post("/api/invoice/validate-compliance")
-async def validate_compliance(request: ProcessInvoiceRequest):
+async def validate_compliance(request: ProcessInvoicesRequest):
     """合规性校验（模拟通道层）"""
     try:
+        # 取第一个KDUBL进行校验
+        kdubl_xml = request.kdubl_xml or (request.kdubl_list[0] if request.kdubl_list else None)
+        if not kdubl_xml:
+            raise HTTPException(status_code=400, detail="必须提供 kdubl_xml 或 kdubl_list")
+            
         result = channel_service.validate_compliance(
-            request.kdubl_xml,
+            kdubl_xml,
             country="CN"
         )
         return result
