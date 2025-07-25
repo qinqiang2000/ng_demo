@@ -233,6 +233,47 @@ class InvoiceMergeEngine:
         
         return result_invoices
     
+    def _split_by_tax_category(self, invoice: InvoiceDomainObject) -> List[InvoiceDomainObject]:
+        """按税种拆分单张发票
+        
+        Args:
+            invoice: 待拆分的发票
+            
+        Returns:
+            拆分后的发票列表
+        """
+        # 按税种分组发票明细
+        tax_category_groups = {}
+        for item in invoice.items:
+            tax_category = item.tax_category or "未分类"
+            if tax_category not in tax_category_groups:
+                tax_category_groups[tax_category] = []
+            tax_category_groups[tax_category].append(item)
+        
+        # 如果只有一个税种，不需要拆分
+        if len(tax_category_groups) <= 1:
+            return [invoice]
+        
+        # 为每个税种创建一张新发票
+        split_invoices = []
+        for tax_category, items in tax_category_groups.items():
+            split_invoice = self._create_split_invoice(invoice, items, tax_category)
+            split_invoices.append(split_invoice)
+        
+        self.execution_log.append({
+            "timestamp": self._get_timestamp(),
+            "level": "INFO",
+            "operation": "split_by_tax_category",
+            "message": f"发票 {invoice.invoice_number} 按税种拆分为 {len(tax_category_groups)} 张发票",
+            "details": {
+                "original_invoice": invoice.invoice_number,
+                "tax_categories": list(tax_category_groups.keys()),
+                "split_count": len(split_invoices)
+            }
+        })
+        
+        return split_invoices
+    
     def _create_split_invoice(self, original_invoice: InvoiceDomainObject, items: List, tax_category: str) -> InvoiceDomainObject:
         """创建拆分后的发票
         
