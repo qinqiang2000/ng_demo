@@ -63,7 +63,7 @@ class InvoiceProcessingService:
         self, 
         inputs: Union[List[UploadFile], List[str], str],
         source_system: str = "ERP",
-        merge_strategy: str = "none",
+        merge_strategy: str = "by_tax_party",
         merge_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """统一发票处理接口 - 支持单张和批量处理
@@ -196,6 +196,10 @@ class InvoiceProcessingService:
                     strategy_enum,
                     merge_config=merge_config
                 )
+                
+                # 收集合并拆分执行日志
+                merge_logs = self.merge_service.get_execution_log()
+                result["execution_details"]["merge_logs"] = merge_logs
                 
                 # 第三阶段：校验和转换
                 all_validation_logs = []  # 收集所有验证日志

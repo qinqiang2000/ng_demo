@@ -48,7 +48,7 @@ class ProcessInvoicesRequest(BaseModel):
     kdubl_xml: Optional[str] = None  # 单张发票的XML字符串
     kdubl_list: Optional[List[str]] = None  # 多张发票的XML字符串列表
     source_system: str = "ERP"
-    merge_strategy: str = "none"
+    merge_strategy: str = "by_tax_party"
     merge_config: Optional[Dict[str, Any]] = None
 
 
@@ -109,7 +109,7 @@ async def process_invoices_json(request: ProcessInvoicesRequest, db: AsyncSessio
 async def process_invoice_files(
     files: List[UploadFile] = File(...),
     source_system: str = "ERP",
-    merge_strategy: str = "none",
+    merge_strategy: str = "by_tax_party",
     merge_config: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):

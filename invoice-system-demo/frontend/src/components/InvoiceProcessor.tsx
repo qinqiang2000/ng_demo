@@ -324,6 +324,7 @@ const InvoiceProcessor: React.FC = () => {
                   key: index,
                   // 从 details 中获取对应的执行日志
                   completion_logs: processResult.details?.[index]?.execution_details?.completion_logs || [],
+                  merge_logs: processResult.details?.[index]?.execution_details?.merge_logs || [],
                   validation_logs: processResult.details?.[index]?.execution_details?.validation_logs || []
                 }))}
                 pagination={false}
@@ -358,6 +359,10 @@ const InvoiceProcessor: React.FC = () => {
                       {record.completion_logs && record.completion_logs.length > 0 && 
                         renderExecutionLogs(record.completion_logs, '🔧 补全规则执行详情')}
                       
+                      {/* 合并拆分执行日志 */}
+                      {record.merge_logs && record.merge_logs.length > 0 && 
+                        renderExecutionLogs(record.merge_logs, '🔄 合并拆分执行详情')}
+                      
                       {/* 校验规则执行日志 */}
                       {record.validation_logs && record.validation_logs.length > 0 && 
                         renderExecutionLogs(record.validation_logs, '🔍 校验规则执行详情')}
@@ -365,6 +370,7 @@ const InvoiceProcessor: React.FC = () => {
                   ),
                   rowExpandable: (record: any) => 
                     (record.completion_logs && record.completion_logs.length > 0) ||
+                    (record.merge_logs && record.merge_logs.length > 0) ||
                     (record.validation_logs && record.validation_logs.length > 0),
                 }}
               />
@@ -599,6 +605,9 @@ const InvoiceProcessor: React.FC = () => {
             {/* 在"数据补全完成"后显示补全详情 */}
             {step === '✓ 数据补全完成' && processResult.execution_details?.completion_logs && 
               renderExecutionLogs(processResult.execution_details.completion_logs, '补全规则执行详情')}
+            {/* 在"合并拆分完成"后显示合并详情 */}
+            {step === '✓ 合并拆分完成' && processResult.execution_details?.merge_logs && 
+              renderExecutionLogs(processResult.execution_details.merge_logs, '合并拆分执行详情')}
             {/* 在"业务校验通过"后显示校验详情 */}
             {step === '✓ 业务校验通过' && processResult.execution_details?.validation_logs && 
               renderExecutionLogs(processResult.execution_details.validation_logs, '校验规则执行详情')}
