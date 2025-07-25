@@ -7,7 +7,8 @@ import uuid
 from datetime import datetime
 
 from .invoice_service import InvoiceProcessingService
-from .invoice_merge_service import InvoiceMergeService, MergeStrategy
+from .invoice_merge_service import InvoiceMergeService
+from ..core.invoice_merge_engine import MergeStrategy
 from ..models.domain import InvoiceDomainObject
 from ..core.kdubl_converter import KDUBLDomainConverter
 
@@ -110,11 +111,12 @@ class BatchInvoiceProcessingService:
                 except ValueError:
                     strategy_enum = MergeStrategy.NONE
                 
-                # 执行合并
-                merged_invoices = self.merge_service.merge_invoices(all_completed_invoices, strategy_enum)
-                
-                # 执行拆分
-                processed_invoices = self.merge_service.split_invoices(merged_invoices)
+                # 执行合并拆分一体化处理
+                processed_invoices = self.merge_service.merge_and_split_invoices(
+                    all_completed_invoices, 
+                    strategy_enum,
+                    merge_config=merge_config
+                )
                 
                 total_output_invoices = len(processed_invoices)
                 

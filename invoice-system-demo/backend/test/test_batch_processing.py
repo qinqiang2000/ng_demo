@@ -8,7 +8,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.services.batch_invoice_service import BatchInvoiceProcessingService
-from app.services.invoice_merge_service import MergeStrategy
+from app.core.invoice_merge_engine import MergeStrategy
 from app.database.connection import init_database, get_db
 from fastapi import UploadFile
 from io import BytesIO

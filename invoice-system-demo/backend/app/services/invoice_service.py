@@ -8,6 +8,8 @@ from ..models.rules import FieldCompletionRule, FieldValidationRule
 from ..core.kdubl_converter import KDUBLDomainConverter
 from ..core.rule_engine import FieldCompletionEngine, BusinessValidationEngine
 from ..core.cel_engine import CELFieldCompletionEngine, CELBusinessValidationEngine, DatabaseCELFieldCompletionEngine, DatabaseCELBusinessValidationEngine
+from .invoice_merge_service import InvoiceMergeService
+from ..core.invoice_merge_engine import MergeStrategy
 
 
 class InvoiceProcessingService:
@@ -82,14 +84,10 @@ class InvoiceProcessingService:
             
             # 3. 合并拆分处理（单张发票作为长度为1的批次）
             result["steps"].append("执行合并拆分处理")
-            from ..services.invoice_merge_service import InvoiceMergeService, MergeStrategy
             merge_service = InvoiceMergeService()
             
-            # 执行合并（对单张发票使用NONE策略）
-            merged_invoices = merge_service.merge_invoices([domain], MergeStrategy.NONE)
-            
-            # 执行拆分
-            processed_invoices = merge_service.split_invoices(merged_invoices)
+            # 执行合并拆分一体化处理（对单张发票使用NONE策略）
+            processed_invoices = merge_service.merge_and_split_invoices([domain], MergeStrategy.NONE)
             result["steps"].append(f"✓ 合并拆分完成，生成{len(processed_invoices)}张发票")
             
             # 4. 逐个校验和转换
