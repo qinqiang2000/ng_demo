@@ -187,6 +187,87 @@ const InvoiceProcessor: React.FC = () => {
   const renderProcessSteps = () => {
     if (!processResult) return null;
 
+    // 渲染规则执行日志的通用函数
+    const renderExecutionLogs = (logs: any[], title: string) => {
+      if (!logs || logs.length === 0) return null;
+      
+      return (
+        <Card title={title} size="small" style={{ marginTop: 16 }}>
+          <div className="execution-logs">
+            {logs.map((log: any, logIndex: number) => (
+              <div key={logIndex} className={`log-item ${
+                log.status === 'success' || log.status === 'passed' ? 'log-success' : 
+                log.status === 'skipped' ? 'log-skipped' :
+                log.status === 'failed' ? 'log-warning' : 'log-error'
+              }`} style={{ 
+                padding: '8px 12px', 
+                marginBottom: '4px', 
+                borderLeft: `3px solid ${
+                  log.status === 'success' || log.status === 'passed' ? '#52c41a' : 
+                  log.status === 'skipped' ? '#faad14' :
+                  log.status === 'failed' ? '#ff7875' : '#ff4d4f'
+                }`,
+                backgroundColor: `${
+                  log.status === 'success' || log.status === 'passed' ? '#f6ffed' : 
+                  log.status === 'skipped' ? '#fffbe6' :
+                  log.status === 'failed' ? '#fff2f0' : '#fff1f0'
+                }`,
+                borderRadius: '4px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="log-icon" style={{ marginRight: '8px', fontSize: '14px' }}>
+                    {log.status === 'success' || log.status === 'passed' ? '✅' : 
+                     log.status === 'skipped' ? '⏭️' :
+                     log.status === 'failed' ? '❌' : '❓'}
+                  </span>
+                  <span className="log-message" style={{ flex: 1 }}>
+                    <strong>{log.rule_name}</strong>
+                    <Tag 
+                      color={
+                        log.status === 'success' || log.status === 'passed' ? 'green' : 
+                        log.status === 'skipped' ? 'orange' :
+                        log.status === 'failed' ? 'red' : 'red'
+                      }
+                      style={{ marginLeft: 8, fontSize: '11px' }}
+                    >
+                      {log.status}
+                    </Tag>
+                    {/* 成功时显示设置的字段和值 */}
+                    {log.status === 'success' && log.target_field && log.value && (
+                      <span style={{ marginLeft: 8, color: '#666', fontSize: '12px' }}>
+                        → {log.item_index !== undefined ? 
+                            log.target_field.replace('items[]', `items[${log.item_index}]`) : 
+                            log.target_field} = <code style={{ backgroundColor: '#f5f5f5', padding: '1px 4px' }}>{log.value}</code>
+                      </span>
+                    )}
+                    {/* 跳过时显示原因 */}
+                    {log.status === 'skipped' && log.reason && (
+                      <span style={{ marginLeft: 8, color: '#999', fontSize: '12px' }}>
+                        ({log.reason === 'condition_not_met' ? '条件不满足' : 
+                          log.reason === 'inactive' ? '规则未激活' : log.reason})
+                      </span>
+                    )}
+                    {/* 失败时显示错误消息 */}
+                    {(log.status === 'failed' || log.status === 'error') && log.error && (
+                      <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                        错误: {log.error}
+                      </div>
+                    )}
+                  </span>
+                </div>
+                {/* 显示条件表达式 */}
+                {log.condition && (
+                  <div style={{ marginTop: 4, marginLeft: 22, fontSize: '11px', color: '#999', fontFamily: 'monospace', backgroundColor: '#fafafa', padding: '2px 6px', borderRadius: '2px' }}>
+                    条件: {log.condition}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      );
+    };
+
     // 批量处理结果
     if (processResult.batch_id) {
       return (
@@ -231,7 +312,10 @@ const InvoiceProcessor: React.FC = () => {
               <Table
                 dataSource={processResult.file_mapping.map((item: any, index: number) => ({
                   ...item,
-                  key: index
+                  key: index,
+                  // 从 details 中获取对应的执行日志
+                  completion_logs: processResult.details?.[index]?.execution_details?.completion_logs || [],
+                  validation_logs: processResult.details?.[index]?.execution_details?.validation_logs || []
                 }))}
                 pagination={false}
                 size="small"
@@ -258,8 +342,43 @@ const InvoiceProcessor: React.FC = () => {
                     render: (error: string) => error || '-',
                   },
                 ]}
+                expandable={{
+                  expandedRowRender: (record: any) => (
+                    <div style={{ margin: 0 }}>
+                      {/* 补全规则执行日志 */}
+                      {record.completion_logs && record.completion_logs.length > 0 && 
+                        renderExecutionLogs(record.completion_logs, '🔧 补全规则执行详情')}
+                      
+                      {/* 校验规则执行日志 */}
+                      {record.validation_logs && record.validation_logs.length > 0 && 
+                        renderExecutionLogs(record.validation_logs, '🔍 校验规则执行详情')}
+                    </div>
+                  ),
+                  rowExpandable: (record: any) => 
+                    (record.completion_logs && record.completion_logs.length > 0) ||
+                    (record.validation_logs && record.validation_logs.length > 0),
+                }}
               />
             </Card>
+          )}
+
+          {/* 规则执行详情 */}
+          {processResult.execution_details && (
+            <div>
+              {/* 补全规则执行日志 */}
+              {processResult.execution_details.completion_logs && 
+                renderExecutionLogs(
+                  processResult.execution_details.completion_logs, 
+                  `📝 补全规则执行详情 (${processResult.execution_details.completion_logs.length} 条规则)`
+                )}
+              
+              {/* 校验规则执行日志 */}
+              {processResult.execution_details.validation_logs && 
+                renderExecutionLogs(
+                  processResult.execution_details.validation_logs, 
+                  `🔍 校验规则执行详情 (${processResult.execution_details.validation_logs.length} 条规则)`
+                )}
+            </div>
           )}
         </div>
       );
@@ -267,64 +386,6 @@ const InvoiceProcessor: React.FC = () => {
 
     // 单个处理结果（保持原有逻辑）
     if (!processResult?.steps) return null;
-
-    const renderExecutionLogs = (logs: any[], title: string) => {
-      if (!logs || logs.length === 0) return null;
-      
-      return (
-        <div className="execution-logs" style={{ marginTop: 8, marginLeft: 20 }}>
-          {logs.map((log: any, logIndex: number) => (
-            <div key={logIndex} className={`log-item ${
-              log.status === 'success' || log.status === 'passed' ? 'log-success' : 
-              log.status === 'skipped' ? 'log-skipped' :
-              log.status === 'failed' ? 'log-warning' : 'log-error'
-            }`}>
-              <span className="log-icon">
-                {log.status === 'success' || log.status === 'passed' ? '✅' : 
-                 log.status === 'skipped' ? '⏭️' :
-                 log.status === 'failed' ? '❌' : '❓'}
-              </span>
-              <span className="log-message">
-                <strong>{log.rule_name}</strong>
-                <span style={{ marginLeft: 8, fontSize: '12px', color: '#999' }}>
-                  ({log.status})
-                </span>
-                {/* 失败时显示详细错误消息 */}
-                {log.status === 'failed' && log.error_message && (
-                  <span style={{ marginLeft: 8, color: '#ff4d4f' }}>
-                    → {log.error_message}
-                  </span>
-                )}
-                {log.target_field && log.value && (
-                  <span style={{ marginLeft: 8, color: '#666' }}>
-                    → {log.item_index !== undefined ? 
-                        log.target_field.replace('items[]', `items[${log.item_index}]`) : 
-                        log.target_field} = {log.value}
-                  </span>
-                )}
-                {log.reason && (
-                  <span style={{ marginLeft: 8, color: '#999', fontSize: '12px' }}>
-                    {log.reason === 'condition_not_met' ? '条件不满足' : 
-                     log.reason === 'inactive' ? '规则未激活' : log.reason}
-                  </span>
-                )}
-                {log.condition && (
-                  <div style={{ marginLeft: 20, fontSize: '11px', color: '#ccc', fontFamily: 'monospace' }}>
-                    条件: {log.condition}
-                  </div>
-                )}
-                {/* 非失败状态的错误消息保持原样 */}
-                {log.status !== 'failed' && log.error_message && (
-                  <span style={{ marginLeft: 8, color: '#faad14' }}>
-                    ({log.error_message})
-                  </span>
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    };
 
     return (
       <Card 

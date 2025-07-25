@@ -114,6 +114,7 @@ class InvoiceProcessingService:
             failed_inputs = 0
             
             for i, kdubl_xml in enumerate(kdubl_list):
+                print("="*19, f"正在处理第 {i+1} 个XML文档", "="*19)
                 try:
                     # 解析为Domain Object
                     domain_obj = self.converter.parse(kdubl_xml)
