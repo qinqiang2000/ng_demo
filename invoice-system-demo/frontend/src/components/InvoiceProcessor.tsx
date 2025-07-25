@@ -365,15 +365,198 @@ const InvoiceProcessor: React.FC = () => {
           {/* 规则执行详情 */}
           {processResult.execution_details && (
             <div>
-              {/* 补全规则执行日志 */}
-              {processResult.execution_details.completion_logs && 
+              {/* 按文件分组的补全规则执行日志 */}
+              {processResult.execution_details.completion_by_file && 
+                processResult.execution_details.completion_by_file.length > 0 && (
+                <Card 
+                  title={`📝 补全规则执行详情 - 按文件分组 (${processResult.execution_details.completion_by_file.length} 个文件)`}
+                  size="small" 
+                  style={{ marginTop: 16 }}
+                >
+                  {processResult.execution_details.completion_by_file.map((fileLog: any, fileIndex: number) => (
+                    <Card 
+                      key={fileIndex}
+                      type="inner"
+                      title={
+                        <span>
+                          📄 文件 {fileIndex + 1}: {fileLog.file_name}
+                          <Tag color="blue" style={{ marginLeft: 8 }}>
+                            {fileLog.invoice_number}
+                          </Tag>
+                          <Tag color="green" style={{ marginLeft: 4 }}>
+                            {fileLog.completion_logs?.length || 0} 条规则
+                          </Tag>
+                        </span>
+                      }
+                      size="small"
+                      style={{ marginBottom: 12 }}
+                    >
+                      {fileLog.completion_logs && fileLog.completion_logs.length > 0 ? (
+                        <div className="execution-logs">
+                          {fileLog.completion_logs.map((log: any, logIndex: number) => (
+                            <div key={logIndex} className={`log-item ${
+                              log.status === 'success' || log.status === 'passed' ? 'log-success' : 
+                              log.status === 'skipped' ? 'log-skipped' :
+                              log.status === 'failed' ? 'log-warning' : 'log-error'
+                            }`} style={{ 
+                              padding: '8px 12px', 
+                              marginBottom: '4px', 
+                              borderLeft: `3px solid ${
+                                log.status === 'success' || log.status === 'passed' ? '#52c41a' : 
+                                log.status === 'skipped' ? '#faad14' :
+                                log.status === 'failed' ? '#ff7875' : '#ff4d4f'
+                              }`,
+                              backgroundColor: log.status === 'success' || log.status === 'passed' ? '#f6ffed' : 
+                                             log.status === 'skipped' ? '#fffbe6' :
+                                             log.status === 'failed' ? '#fff2f0' : '#fff1f0',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'flex-start'
+                            }}>
+                              <span className="log-icon" style={{ marginRight: 8, fontSize: '14px' }}>
+                                {log.status === 'success' || log.status === 'passed' ? '✅' : 
+                                 log.status === 'skipped' ? '⏭️' :
+                                 log.status === 'failed' ? '❌' : '❓'}
+                              </span>
+                              <span className="log-message" style={{ flex: 1 }}>
+                                <strong>{log.rule_name}</strong>
+                                <Tag 
+                                  color={
+                                    log.status === 'success' || log.status === 'passed' ? 'green' : 
+                                    log.status === 'skipped' ? 'orange' :
+                                    log.status === 'failed' ? 'red' : 'red'
+                                  }
+                                  style={{ marginLeft: 8, fontSize: '11px' }}
+                                >
+                                  {log.status}
+                                </Tag>
+                                {/* 成功时显示设置的字段和值 */}
+                                {log.status === 'success' && log.target_field && log.value && (
+                                  <div style={{ marginTop: 4, color: '#52c41a', fontSize: '12px' }}>
+                                    {log.target_field}: <strong>{log.value}</strong>
+                                  </div>
+                                )}
+                                {/* 跳过时显示原因 */}
+                                {log.status === 'skipped' && log.reason && (
+                                  <span style={{ marginLeft: 8, color: '#faad14', fontSize: '12px' }}>
+                                    ({log.reason === 'condition_not_met' ? '条件不满足' : 
+                                      log.reason === 'inactive' ? '规则未激活' : log.reason})
+                                  </span>
+                                )}
+                                {/* 失败时显示错误消息 */}
+                                {(log.status === 'failed' || log.status === 'error') && log.error && (
+                                  <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                                    错误: {log.error}
+                                  </div>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>该文件无补全规则执行记录</div>
+                      )}
+                    </Card>
+                  ))}
+                </Card>
+              )}
+              
+              {/* 按发票分组的验证规则执行日志 */}
+              {processResult.execution_details.validation_by_invoice && 
+                processResult.execution_details.validation_by_invoice.length > 0 && (
+                <Card 
+                  title={`🔍 验证规则执行详情 - 按发票分组 (${processResult.execution_details.validation_by_invoice.length} 张发票)`}
+                  size="small" 
+                  style={{ marginTop: 16 }}
+                >
+                  {processResult.execution_details.validation_by_invoice.map((invoiceLog: any, invoiceIndex: number) => (
+                    <Card 
+                      key={invoiceIndex}
+                      type="inner"
+                      title={
+                        <span>
+                          🧾 发票 {invoiceIndex + 1}: {invoiceLog.invoice_number}
+                          <Tag color="purple" style={{ marginLeft: 8 }}>
+                            {invoiceLog.validation_logs?.length || 0} 条规则
+                          </Tag>
+                        </span>
+                      }
+                      size="small"
+                      style={{ marginBottom: 12 }}
+                    >
+                      {invoiceLog.validation_logs && invoiceLog.validation_logs.length > 0 ? (
+                        <div className="execution-logs">
+                          {invoiceLog.validation_logs.map((log: any, logIndex: number) => (
+                            <div key={logIndex} className={`log-item ${
+                              log.status === 'success' || log.status === 'passed' ? 'log-success' : 
+                              log.status === 'skipped' ? 'log-skipped' :
+                              log.status === 'failed' ? 'log-warning' : 'log-error'
+                            }`} style={{ 
+                              padding: '8px 12px', 
+                              marginBottom: '4px', 
+                              borderLeft: `3px solid ${
+                                log.status === 'success' || log.status === 'passed' ? '#52c41a' : 
+                                log.status === 'skipped' ? '#faad14' :
+                                log.status === 'failed' ? '#ff7875' : '#ff4d4f'
+                              }`,
+                              backgroundColor: log.status === 'success' || log.status === 'passed' ? '#f6ffed' : 
+                                             log.status === 'skipped' ? '#fffbe6' :
+                                             log.status === 'failed' ? '#fff2f0' : '#fff1f0',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'flex-start'
+                            }}>
+                              <span className="log-icon" style={{ marginRight: 8, fontSize: '14px' }}>
+                                {log.status === 'success' || log.status === 'passed' ? '✅' : 
+                                 log.status === 'skipped' ? '⏭️' :
+                                 log.status === 'failed' ? '❌' : '❓'}
+                              </span>
+                              <span className="log-message" style={{ flex: 1 }}>
+                                <strong>{log.rule_name}</strong>
+                                <Tag 
+                                  color={
+                                    log.status === 'success' || log.status === 'passed' ? 'green' : 
+                                    log.status === 'skipped' ? 'orange' :
+                                    log.status === 'failed' ? 'red' : 'red'
+                                  }
+                                  style={{ marginLeft: 8, fontSize: '11px' }}
+                                >
+                                  {log.status}
+                                </Tag>
+                                {/* 验证规则的详细信息 */}
+                                {log.message && (
+                                  <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                                    {log.message}
+                                  </div>
+                                )}
+                                {/* 失败时显示错误消息 */}
+                                {(log.status === 'failed' || log.status === 'error') && log.error && (
+                                  <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                                    错误: {log.error}
+                                  </div>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>该发票无验证规则执行记录</div>
+                      )}
+                    </Card>
+                  ))}
+                </Card>
+              )}
+
+              {/* 保留原有的全局日志展示作为备用 */}
+              {(!processResult.execution_details.completion_by_file || processResult.execution_details.completion_by_file.length === 0) &&
+                processResult.execution_details.completion_logs && 
                 renderExecutionLogs(
                   processResult.execution_details.completion_logs, 
                   `📝 补全规则执行详情 (${processResult.execution_details.completion_logs.length} 条规则)`
                 )}
               
-              {/* 校验规则执行日志 */}
-              {processResult.execution_details.validation_logs && 
+              {(!processResult.execution_details.validation_by_invoice || processResult.execution_details.validation_by_invoice.length === 0) &&
+                processResult.execution_details.validation_logs && 
                 renderExecutionLogs(
                   processResult.execution_details.validation_logs, 
                   `🔍 校验规则执行详情 (${processResult.execution_details.validation_logs.length} 条规则)`

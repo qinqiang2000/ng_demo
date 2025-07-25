@@ -102,9 +102,12 @@ class InvoiceProcessingService:
             },
             "file_mapping": file_mapping,
             "execution_details": {
-                "completion_logs": [],
-                "validation_logs": []
-            }
+                "completion_logs": [],  # 全局补全日志（所有文件）
+                "validation_logs": [],  # 全局验证日志（所有发票）
+                "completion_by_file": [],  # 按文件分组的补全日志
+                "validation_by_invoice": []  # 按发票分组的验证日志
+            },
+            "details": []  # 添加details字段来存储每个文件的详细信息
         }
         
         try:
@@ -112,18 +115,52 @@ class InvoiceProcessingService:
             all_completed_invoices = []
             successful_inputs = 0
             failed_inputs = 0
+            all_completion_logs = []  # 收集所有文件的补全日志
             
             for i, kdubl_xml in enumerate(kdubl_list):
                 print("="*19, f"正在处理第 {i+1} 个XML文档", "="*19)
+                
+                # 为每个文件初始化详细信息
+                file_details = {
+                    "file_index": i,
+                    "execution_details": {
+                        "completion_logs": [],
+                        "validation_logs": []
+                    }
+                }
+                
                 try:
                     # 解析为Domain Object
                     domain_obj = self.converter.parse(kdubl_xml)
+                    
+                    # 重置执行日志（确保每个文件的日志独立）
+                    self.completion_engine.execution_log = []
                     
                     # 数据补全
                     if self.db_session:
                         domain_obj = await self.completion_engine.complete_async(domain_obj)
                     else:
                         domain_obj = self.completion_engine.complete(domain_obj)
+                    
+                    # 收集当前文件的补全日志
+                    current_completion_logs = getattr(self.completion_engine, 'execution_log', []).copy()
+                    
+                    # 为每个日志添加文件标识信息
+                    for log in current_completion_logs:
+                        log["file_index"] = i
+                        log["file_name"] = file_mapping[i]["filename"] if i < len(file_mapping) else f"file_{i+1}"
+                        log["invoice_number"] = domain_obj.invoice_number if hasattr(domain_obj, 'invoice_number') else f"invoice_{i+1}"
+                    
+                    file_details["execution_details"]["completion_logs"] = current_completion_logs
+                    all_completion_logs.extend(current_completion_logs)
+                    
+                    # 添加到按文件分组的补全日志中
+                    result["execution_details"]["completion_by_file"].append({
+                        "file_index": i,
+                        "file_name": file_mapping[i]["filename"] if i < len(file_mapping) else f"file_{i+1}",
+                        "invoice_number": domain_obj.invoice_number if hasattr(domain_obj, 'invoice_number') else f"invoice_{i+1}",
+                        "completion_logs": current_completion_logs
+                    })
                     
                     all_completed_invoices.append(domain_obj)
                     successful_inputs += 1
@@ -138,9 +175,12 @@ class InvoiceProcessingService:
                     if i < len(file_mapping):
                         file_mapping[i]["success"] = False
                         file_mapping[i]["error"] = str(e)
+                
+                # 添加文件详细信息到结果中
+                result["details"].append(file_details)
             
-            # 收集补全执行日志
-            result["execution_details"]["completion_logs"] = getattr(self.completion_engine, 'execution_log', [])
+            # 收集所有补全执行日志
+            result["execution_details"]["completion_logs"] = all_completion_logs
             
             # 第二阶段：合并拆分处理
             if all_completed_invoices:
@@ -158,13 +198,40 @@ class InvoiceProcessingService:
                 )
                 
                 # 第三阶段：校验和转换
+                all_validation_logs = []  # 收集所有验证日志
+                
                 for i, invoice in enumerate(processed_invoices):
                     try:
+                        # 重置验证执行日志（确保每个发票的日志独立）
+                        self.validation_engine.execution_log = []
+                        
                         # 业务校验
                         if self.db_session:
                             is_valid, errors = await self.validation_engine.validate_async(invoice)
                         else:
                             is_valid, errors = self.validation_engine.validate(invoice)
+                        
+                        # 收集当前发票的验证日志
+                        current_validation_logs = getattr(self.validation_engine, 'execution_log', []).copy()
+                        
+                        # 为每个验证日志添加发票标识信息（注意：这里是发票索引，不是文件索引）
+                        for log in current_validation_logs:
+                            log["invoice_index"] = i  # 发票在处理结果中的索引
+                            log["invoice_number"] = invoice.invoice_number if hasattr(invoice, 'invoice_number') else f"invoice_{i+1}"
+                            # 不再添加file_index和file_name，因为合并拆分后无法准确对应
+                        
+                        all_validation_logs.extend(current_validation_logs)
+                        
+                        # 添加到按发票分组的验证日志中
+                        result["execution_details"]["validation_by_invoice"].append({
+                            "invoice_index": i,
+                            "invoice_number": invoice.invoice_number if hasattr(invoice, 'invoice_number') else f"invoice_{i+1}",
+                            "validation_logs": current_validation_logs
+                        })
+                        
+                        # 注意：合并拆分后，发票数量可能与输入文件数量不一致
+                        # 因此不再将验证日志分配到具体的文件详情中
+                        # 验证日志将统一存储在全局execution_details中
                         
                         if is_valid:
                             # 转换为KDUBL
@@ -195,8 +262,8 @@ class InvoiceProcessingService:
                             "errors": [f"处理异常: {str(e)}"]
                         })
                 
-                # 收集校验执行日志
-                result["execution_details"]["validation_logs"] = getattr(self.validation_engine, 'execution_log', [])
+                # 收集所有验证执行日志
+                result["execution_details"]["validation_logs"] = all_validation_logs
             
             # 更新摘要信息
             result["summary"].update({
