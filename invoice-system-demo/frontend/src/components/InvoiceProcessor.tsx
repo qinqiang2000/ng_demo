@@ -52,15 +52,16 @@ const InvoiceProcessor: React.FC = () => {
     }
   };
 
-  const loadSelectedSamples = async () => {
-    if (selectedSamples.length === 0) {
-      message.warning('请先选择示例文件');
+  const loadSelectedSamples = async (samples: string[] = selectedSamples) => {
+    if (samples.length === 0) {
+      // 如果没有选中任何文件，清空内容
+      setXmlContent('');
       return;
     }
 
     try {
       let combinedContent = '';
-      for (const filename of selectedSamples) {
+      for (const filename of samples) {
         const response = await fetch(`/data/${filename}`);
         const text = await response.text();
         if (combinedContent) {
@@ -70,10 +71,18 @@ const InvoiceProcessor: React.FC = () => {
         }
       }
       setXmlContent(combinedContent);
-      message.success(`已加载 ${selectedSamples.length} 个示例文件`);
+      if (samples.length > 0) {
+        message.success(`已自动加载 ${samples.length} 个示例文件`);
+      }
     } catch (error) {
       message.error('加载示例文件失败');
     }
+  };
+
+  // 当选中的示例文件变化时自动加载
+  const handleSampleSelectionChange = (checkedValues: string[]) => {
+    setSelectedSamples(checkedValues);
+    loadSelectedSamples(checkedValues);
   };
 
   const handleProcess = async () => {
@@ -637,9 +646,10 @@ const InvoiceProcessor: React.FC = () => {
         {inputMode === 'text' ? (
           <div>
             <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 12, fontWeight: 'bold' }}>📁 示例数据 (选择后自动加载)</div>
               <Checkbox.Group 
                 value={selectedSamples} 
-                onChange={setSelectedSamples}
+                onChange={handleSampleSelectionChange}
                 style={{ width: '100%' }}
               >
                 <Row>
@@ -655,13 +665,6 @@ const InvoiceProcessor: React.FC = () => {
               </Checkbox.Group>
             </div>
             <Space>
-              <Button 
-                icon={<PlusOutlined />}
-                onClick={loadSelectedSamples}
-                disabled={selectedSamples.length === 0}
-              >
-                加载选中的示例文件 ({selectedSamples.length})
-              </Button>
               <Button 
                 onClick={() => {
                   setXmlContent('');
