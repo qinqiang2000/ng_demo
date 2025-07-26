@@ -25,7 +25,6 @@ import {
 } from '@ant-design/icons';
 import { invoiceService } from '../services/api';
 import ConditionBuilder from './ConditionBuilder';
-import ExpressionTemplates from './ExpressionTemplates';
 import { RuleFormData, DomainField, FunctionInfo } from '../types/rules';
 
 const { TextArea } = Input;
@@ -59,20 +58,25 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
   const [functions, setFunctions] = useState<any>(null);
   const [llmStatus, setLlmStatus] = useState<any>(null);
   const [llmLoading, setLlmLoading] = useState(false);
+  const [yamlContent, setYamlContent] = useState('');
+  const [yamlError, setYamlError] = useState('');
 
   useEffect(() => {
     if (visible) {
       loadHelperData();
       if (rule) {
         form.setFieldsValue(rule);
+        updateYamlFromForm(rule);
       } else {
         form.resetFields();
         // 设置默认值
-        form.setFieldsValue({
+        const defaultValues = {
           priority: ruleType === 'completion' ? 50 : 100,
           active: true,
           apply_to: ''
-        });
+        };
+        form.setFieldsValue(defaultValues);
+        updateYamlFromForm(defaultValues);
       }
     }
   }, [visible, rule, form, ruleType]);
@@ -186,6 +190,84 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
     }
   };
 
+  const updateYamlFromForm = (formData?: any) => {
+    const values = formData || form.getFieldsValue();
+    const yamlData = {
+      id: values.id || 'new_rule',
+      rule_name: values.rule_name || '',
+      apply_to: values.apply_to || '',
+      ...(ruleType === 'completion' ? {
+        target_field: values.target_field || '',
+        rule_expression: values.rule_expression || ''
+      } : {
+        field_path: values.field_path || '',
+        rule_expression: values.rule_expression || '',
+        error_message: values.error_message || ''
+      }),
+      priority: values.priority || (ruleType === 'completion' ? 50 : 100),
+      active: values.active !== undefined ? values.active : true
+    };
+    
+    try {
+      // Convert to YAML format manually for better readability
+      const yamlString = Object.entries(yamlData)
+        .map(([key, value]) => {
+          if (typeof value === 'string') {
+            return `${key}: "${value}"`;
+          } else if (typeof value === 'boolean') {
+            return `${key}: ${value}`;
+          } else {
+            return `${key}: ${value}`;
+          }
+        })
+        .join('\n');
+      
+      setYamlContent(yamlString);
+      setYamlError('');
+    } catch (error) {
+      setYamlError('生成YAML格式失败');
+    }
+  };
+
+  const handleYamlChange = (value: string) => {
+    setYamlContent(value);
+    try {
+      // Simple YAML parsing for our use case
+      const lines = value.split('\n').filter(line => line.trim());
+      const parsed: any = {};
+      
+      lines.forEach(line => {
+        const match = line.match(/^([^:]+):\s*(.*)$/);
+        if (match) {
+          const [, key, val] = match;
+          const trimmedKey = key.trim();
+          const trimmedVal = val.trim();
+          
+          // Remove quotes if present
+          let parsedVal: any = trimmedVal.replace(/^"(.*)"$/, '$1');
+          
+          // Parse boolean and number values
+          if (parsedVal === 'true') parsedVal = true;
+          else if (parsedVal === 'false') parsedVal = false;
+          else if (!isNaN(Number(parsedVal)) && parsedVal !== '') parsedVal = Number(parsedVal);
+          
+          parsed[trimmedKey] = parsedVal;
+        }
+      });
+      
+      form.setFieldsValue(parsed);
+      setYamlError('');
+    } catch (error) {
+      setYamlError('YAML格式解析失败，请检查语法');
+    }
+  };
+
+  const handleSyncFromForm = () => {
+    const values = form.getFieldsValue();
+    updateYamlFromForm(values);
+    message.success('已从表单同步到YAML');
+  };
+
   const renderFieldOptions = (fields: { [key: string]: DomainField }, prefix = '') => {
     const options: any[] = [];
     
@@ -284,7 +366,14 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
     >
       <Tabs defaultActiveKey="basic">
         <TabPane tab="基本信息" key="basic">
-          <Form form={form} layout="vertical">
+          <Form 
+            form={form} 
+            layout="vertical"
+            onValuesChange={() => {
+              // Debounce the YAML update to avoid too frequent updates
+              setTimeout(() => updateYamlFromForm(), 100);
+            }}
+          >
             <Form.Item
               name="rule_name"
               label="规则名称"
@@ -466,12 +555,49 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
           </TabPane>
         )}
 
-        <TabPane tab="表达式模板" key="templates">
-          <ExpressionTemplates
-            ruleType={ruleType}
-            onUseTemplate={(expression) => {
-              form.setFieldsValue({ rule_expression: expression });
-            }}
+        <TabPane tab="YAML格式" key="yaml">
+          <Alert
+            message="YAML规则编辑"
+            description="您可以直接编辑YAML格式的规则配置，修改后会自动同步到基本信息表单"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Space style={{ marginBottom: 8 }}>
+            <Button onClick={handleSyncFromForm} size="small">
+              从表单同步
+            </Button>
+          </Space>
+          
+          {yamlError && (
+            <Alert
+              message={yamlError}
+              type="error"
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          
+          <TextArea
+            value={yamlContent}
+            onChange={(e) => handleYamlChange(e.target.value)}
+            rows={15}
+            style={{ fontFamily: 'Monaco, Consolas, monospace', fontSize: '12px' }}
+            placeholder={`# ${ruleType === 'completion' ? '补全' : '校验'}规则YAML配置\nid: "rule_id"\nrule_name: "规则名称"\napply_to: "应用条件"\n${ruleType === 'completion' ? 'target_field: "目标字段"' : 'field_path: "校验字段"'}\nrule_expression: "规则表达式"\n${ruleType === 'validation' ? 'error_message: "错误信息"\n' : ''}priority: 100\nactive: true`}
+          />
+          
+          <Alert
+            message="格式说明"
+            description={
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                <li>字符串值请用双引号包围</li>
+                <li>布尔值直接写 true 或 false</li>
+                <li>数值直接写数字</li>
+                <li>修改YAML内容会自动同步到基本信息表单</li>
+              </ul>
+            }
+            type="info"
+            style={{ marginTop: 16 }}
           />
         </TabPane>
 

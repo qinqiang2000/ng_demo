@@ -102,12 +102,12 @@ field_completion_rules:
   rule_name: 计算商品税额
   target_field: items[].tax_amount
 - active: true
-  apply_to: ''
-  id: temp_rule_001
-  priority: 1
-  rule_expression: '''test_value'''
-  rule_name: 临时测试规则
-  target_field: extensions.test_field
+  apply_to: invoice.supplier.email == null
+  id: completion_b7e47b4c
+  priority: 100
+  rule_expression: db.companies.email[name=invoice.supplier.name]
+  rule_name: 从DB补全供应商Email
+  target_field: supplier.email
 field_validation_rules:
 - active: true
   apply_to: ''

@@ -8,6 +8,7 @@
 - **新语法**: `db.table.field[conditions]` 取代繁琐的 `db_query()` 函数
 - **示例**: `db.companies.tax_number[name=invoice.supplier.name]`
 - **优势**: 更直观、无需预定义查询模板、自动类型推断
+- **详细语法**: 参见 [智能数据库查询语法手册](SMART_QUERY_SYNTAX.md)
 
 ### 完整的规则管理系统
 - 可视化规则编辑器
@@ -216,6 +217,8 @@ db.companies[name='携程广州']
 // 带默认值
 db.companies.category[name=$name] or 'GENERAL'
 ```
+
+> **详细语法说明**: 完整的数据库查询语法文档请参见 [智能数据库查询语法手册](SMART_QUERY_SYNTAX.md)
 
 #### 字符串操作
 ```cel

@@ -215,47 +215,50 @@ const DataManagement: React.FC = () => {
     }
   };
 
-  // 企业表格列
-  const companyColumns = [
-    {
-      title: 'ID',
+  // 动态生成企业表格列
+  const generateCompanyColumns = () => {
+    if (companies.length === 0) return [];
+    
+    const sampleRecord = companies[0];
+    const columns = Object.keys(sampleRecord)
+      .filter(key => key !== 'id') // id单独处理
+      .map(key => {
+        const column: any = {
+          title: key,
+          dataIndex: key,
+          key: key,
+        };
+
+        // 特殊字段的渲染处理
+        if (key === 'category') {
+          column.render = (category: string) => {
+            const categoryMap: Record<string, string> = {
+              'GENERAL': '一般企业',
+              'TRAVEL_SERVICE': '旅游服务',
+              'TECH': '科技企业',
+              'TRADING': '贸易公司'
+            };
+            return categoryMap[category] || category;
+          };
+        } else if (key === 'is_active') {
+          column.render = (active: boolean) => (
+            <Switch checked={active} disabled size="small" />
+          );
+        }
+
+        return column;
+      });
+
+    // 添加id列在最前面
+    columns.unshift({
+      title: 'id',
       dataIndex: 'id',
       key: 'id',
       width: 60,
-    },
-    {
-      title: '企业名称',
-      dataIndex: 'name',
-      key: 'name',
-    },
-    {
-      title: '税号',
-      dataIndex: 'tax_number',
-      key: 'tax_number',
-    },
-    {
-      title: '分类',
-      dataIndex: 'category',
-      key: 'category',
-      render: (category: string) => {
-        const categoryMap: Record<string, string> = {
-          'GENERAL': '一般企业',
-          'TRAVEL_SERVICE': '旅游服务',
-          'TECH': '科技企业',
-          'TRADING': '贸易公司'
-        };
-        return categoryMap[category] || category;
-      }
-    },
-    {
-      title: '状态',
-      dataIndex: 'is_active',
-      key: 'is_active',
-      render: (active: boolean) => (
-        <Switch checked={active} disabled size="small" />
-      )
-    },
-    {
+    });
+
+    // 添加操作列
+    columns.push({
       title: '操作',
       key: 'actions',
       render: (_: any, record: Company) => (
@@ -281,54 +284,53 @@ const DataManagement: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
-    },
-  ];
+    });
 
-  // 税率表格列
-  const taxRateColumns = [
-    {
-      title: 'ID',
+    return columns;
+  };
+
+  const companyColumns = generateCompanyColumns();
+
+  // 动态生成税率表格列
+  const generateTaxRateColumns = () => {
+    if (taxRates.length === 0) return [];
+    
+    const sampleRecord = taxRates[0];
+    const columns = Object.keys(sampleRecord)
+      .filter(key => key !== 'id') // id单独处理
+      .map(key => {
+        const column: any = {
+          title: key,
+          dataIndex: key,
+          key: key,
+        };
+
+        // 特殊字段的渲染处理
+        if (key === 'rate') {
+          column.render = (rate: number) => `${(rate * 100).toFixed(2)}%`;
+        } else if (key === 'min_amount') {
+          column.render = (amount: number) => `¥${amount.toLocaleString()}`;
+        } else if (key === 'max_amount') {
+          column.render = (amount?: number) => amount ? `¥${amount.toLocaleString()}` : '无限制';
+        } else if (key === 'is_active') {
+          column.render = (active: boolean) => (
+            <Switch checked={active} disabled size="small" />
+          );
+        }
+
+        return column;
+      });
+
+    // 添加id列在最前面
+    columns.unshift({
+      title: 'id',
       dataIndex: 'id',
       key: 'id',
       width: 60,
-    },
-    {
-      title: '税率名称',
-      dataIndex: 'name',
-      key: 'name',
-    },
-    {
-      title: '税率',
-      dataIndex: 'rate',
-      key: 'rate',
-      render: (rate: number) => `${(rate * 100).toFixed(2)}%`
-    },
-    {
-      title: '分类',
-      dataIndex: 'category',
-      key: 'category',
-    },
-    {
-      title: '最小金额',
-      dataIndex: 'min_amount',
-      key: 'min_amount',
-      render: (amount: number) => `¥${amount.toLocaleString()}`
-    },
-    {
-      title: '最大金额',
-      dataIndex: 'max_amount',
-      key: 'max_amount',
-      render: (amount?: number) => amount ? `¥${amount.toLocaleString()}` : '无限制'
-    },
-    {
-      title: '状态',
-      dataIndex: 'is_active',
-      key: 'is_active',
-      render: (active: boolean) => (
-        <Switch checked={active} disabled size="small" />
-      )
-    },
-    {
+    });
+
+    // 添加操作列
+    columns.push({
       title: '操作',
       key: 'actions',
       render: (_: any, record: TaxRate) => (
@@ -354,8 +356,12 @@ const DataManagement: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
-    },
-  ];
+    });
+
+    return columns;
+  };
+
+  const taxRateColumns = generateTaxRateColumns();
 
   return (
     <div style={{ padding: '24px' }}>
