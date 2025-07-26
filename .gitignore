@@ -256,3 +256,4 @@ __marimo__/
 invoice-system-demo/frontend/node_modules/
 
 .vercel/
+.trae/

@@ -37,6 +37,72 @@ export const invoiceService = {
     return axios.get(`${API_BASE_URL}/rules`);
   },
 
+  // 规则管理 CRUD 操作
+  getCompletionRules: () => {
+    return axios.get(`${API_BASE_URL}/rules/completion`);
+  },
+
+  getValidationRules: () => {
+    return axios.get(`${API_BASE_URL}/rules/validation`);
+  },
+
+  getCompletionRule: (ruleId: string) => {
+    return axios.get(`${API_BASE_URL}/rules/completion/${ruleId}`);
+  },
+
+  getValidationRule: (ruleId: string) => {
+    return axios.get(`${API_BASE_URL}/rules/validation/${ruleId}`);
+  },
+
+  createCompletionRule: (ruleData: any) => {
+    return axios.post(`${API_BASE_URL}/rules/completion`, ruleData);
+  },
+
+  createValidationRule: (ruleData: any) => {
+    return axios.post(`${API_BASE_URL}/rules/validation`, ruleData);
+  },
+
+  updateCompletionRule: (ruleId: string, ruleData: any) => {
+    return axios.put(`${API_BASE_URL}/rules/completion/${ruleId}`, ruleData);
+  },
+
+  updateValidationRule: (ruleId: string, ruleData: any) => {
+    return axios.put(`${API_BASE_URL}/rules/validation/${ruleId}`, ruleData);
+  },
+
+  deleteCompletionRule: (ruleId: string) => {
+    return axios.delete(`${API_BASE_URL}/rules/completion/${ruleId}`);
+  },
+
+  deleteValidationRule: (ruleId: string) => {
+    return axios.delete(`${API_BASE_URL}/rules/validation/${ruleId}`);
+  },
+
+  reloadRules: () => {
+    return axios.post(`${API_BASE_URL}/rules/reload`);
+  },
+
+  validateExpression: (data: { expression: string; rule_type: string; context_example?: any }) => {
+    return axios.post(`${API_BASE_URL}/rules/validate-expression`, data);
+  },
+
+  getDomainFields: () => {
+    return axios.get(`${API_BASE_URL}/rules/domain-fields`);
+  },
+
+  getAvailableFunctions: () => {
+    return axios.get(`${API_BASE_URL}/rules/functions`);
+  },
+
+  // LLM 相关功能
+  generateRuleWithLLM: (data: { description: string; rule_type: string; context?: string; examples?: string[] }) => {
+    return axios.post(`${API_BASE_URL}/rules/generate-llm`, data);
+  },
+
+  getLLMStatus: () => {
+    return axios.get(`${API_BASE_URL}/rules/llm-status`);
+  },
+
   // 获取连接器
   getConnectors: () => {
     return axios.get(`${API_BASE_URL}/connectors`);

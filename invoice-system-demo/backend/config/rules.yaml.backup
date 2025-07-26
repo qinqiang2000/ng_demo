@@ -24,7 +24,8 @@ field_completion_rules:
   apply_to: '!has(invoice.extensions.supplier_category)'
   id: completion_004a
   priority: 99
-  rule_expression: 'db_query(''get_company_category_by_name'', invoice.supplier.name) '
+  rule_expression: db_query('get_company_category_by_name', invoice.supplier.name)
+    + '_111'
   rule_name: 从DB获取供应商分类
   target_field: extensions.supplier_category
 - active: true

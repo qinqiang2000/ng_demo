@@ -13,6 +13,7 @@ from .services.channel_service import MockChannelService
 from .connectors.base import BusinessConnectorRegistry
 from .database.connection import init_database, get_db
 from .api.data_management import router as data_router
+from .api.rules_management import router as rules_router
 
 app = FastAPI(
     title="下一代开票系统 MVP Demo",
@@ -36,6 +37,7 @@ connector_registry = BusinessConnectorRegistry()
 
 # 注册路由
 app.include_router(data_router)
+app.include_router(rules_router)
 
 # 挂载静态文件服务 - 示例数据（统一使用backend/data目录）
 data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -184,7 +186,9 @@ async def deliver_invoice(request: DeliverInvoiceRequest):
 async def get_rules():
     """获取当前加载的规则"""
     try:
-        rules = invoice_service.get_loaded_rules()
+        from app.services.rules_service import RulesManagementService
+        service = RulesManagementService()
+        rules = await service.get_all_rules()
         return {
             "success": True,
             "data": rules
