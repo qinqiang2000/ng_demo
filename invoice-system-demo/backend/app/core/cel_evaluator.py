@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.domain import InvoiceDomainObject
 from ..database.crud import DatabaseQueryHelper
 from ..utils.logger import get_logger
+from .smart_query import smart_query, SmartQueryParser
 
 # 创建logger
 logger = get_logger(__name__)
@@ -293,8 +294,11 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
     async def evaluate_async(self, expression: str, context: Dict[str, Any]) -> Any:
         """异步计算表达式，支持数据库查询"""
         try:
-            # 检查是否包含数据库查询函数（支持通用db_query和具体函数名）
-            if 'db_query(' in expression or any(func in expression for func in ['db_query_tax_number_by_name(', 'db_query_tax_rate_by_category_and_amount(', 'db_query_company_category_by_name(']):
+            # 检查是否包含新的db.table.field语法
+            if 'db.' in expression and self._contains_smart_query(expression):
+                return await self._evaluate_with_smart_queries(expression, context)
+            # 检查是否包含旧的数据库查询函数（保持向后兼容）
+            elif 'db_query(' in expression or any(func in expression for func in ['db_query_tax_number_by_name(', 'db_query_tax_rate_by_category_and_amount(', 'db_query_company_category_by_name(']):
                 return await self._evaluate_with_db_queries(expression, context)
             else:
                 # 使用标准CEL评估
@@ -483,3 +487,68 @@ class DatabaseCELExpressionEvaluator(CELExpressionEvaluator):
                 return None
         
         return current
+    
+    def _contains_smart_query(self, expression: str) -> bool:
+        """检查表达式是否包含智能查询语法"""
+        import re
+        # 匹配 db.table.field[...] 或 db.table[...] 格式
+        pattern = r'db\.\w+(?:\.\w+)?\[[^\]]+\]'
+        return bool(re.search(pattern, expression))
+    
+    async def _evaluate_with_smart_queries(self, expression: str, context: Dict[str, Any]) -> Any:
+        """处理包含智能查询语法的表达式"""
+        if not self.db_session:
+            logger.error(f"数据库会话为空，无法执行智能查询: {expression}")
+            return None
+        
+        try:
+            # 替换所有智能查询
+            processed_expression = await self._replace_smart_queries(expression, context)
+            
+            # 使用CEL计算处理后的表达式
+            return self.evaluate(processed_expression, context)
+            
+        except Exception as e:
+            logger.error(f"智能查询表达式处理错误: {expression} - {str(e)}")
+            return None
+    
+    async def _replace_smart_queries(self, expression: str, context: Dict[str, Any]) -> str:
+        """替换表达式中的所有智能查询"""
+        import re
+        
+        # 匹配 db.table.field[...] 或 db.table[...] 格式
+        pattern = r'(db\.\w+(?:\.\w+)?\[[^\]]+\])'
+        
+        # 找到所有匹配项
+        matches = list(re.finditer(pattern, expression))
+        
+        # 从后向前替换，避免位置偏移
+        for match in reversed(matches):
+            query_expr = match.group(1)
+            
+            try:
+                # 执行智能查询
+                result = await smart_query(query_expr, context, self.db_session)
+                
+                # 根据结果类型构造替换值
+                if result is None:
+                    replacement = 'null'
+                elif isinstance(result, str):
+                    replacement = f'"{result}"'
+                elif isinstance(result, (int, float, Decimal)):
+                    replacement = str(result)
+                elif isinstance(result, bool):
+                    replacement = 'true' if result else 'false'
+                else:
+                    # 其他类型，尝试转为字符串
+                    replacement = f'"{str(result)}"'
+                
+                # 替换原表达式
+                expression = expression[:match.start()] + replacement + expression[match.end():]
+                
+            except Exception as e:
+                logger.error(f"智能查询执行失败: {query_expr} - {str(e)}")
+                # 查询失败时使用默认值
+                expression = expression[:match.start()] + 'null' + expression[match.end():]
+        
+        return expression

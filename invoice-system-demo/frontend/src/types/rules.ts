@@ -2,7 +2,8 @@
 
 export interface Rule {
   id: string;
-  name: string;
+  name?: string;  // for backward compatibility
+  rule_name?: string;  // actual field from backend
   active: boolean;
   priority: number;
   apply_to: string;

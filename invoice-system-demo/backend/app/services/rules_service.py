@@ -268,7 +268,7 @@ class RulesManagementService:
             test_context = context_example or self._create_test_context()
             
             # 尝试编译和执行表达式
-            if db_session and 'db_query(' in expression:
+            if db_session and ('db_query(' in expression or 'db.' in expression):
                 # 异步执行包含数据库查询的表达式
                 result = await evaluator.evaluate_async(expression, test_context)
             else:
@@ -397,11 +397,17 @@ class RulesManagementService:
             "custom_functions": {
                 "description": "自定义函数",
                 "functions": {
+                    "db.table.field[conditions]": {
+                        "description": "极简数据库查询语法（推荐）",
+                        "example": "db.companies.tax_number[name=invoice.supplier.name]",
+                        "returns": "查询结果值",
+                        "note": "自动限制返回一条记录"
+                    },
                     "db_query(query_name, ...params)": {
-                        "description": "数据库查询函数",
+                        "description": "数据库查询函数（旧语法，向后兼容）",
                         "example": "db_query('get_tax_number_by_name', invoice.supplier.name)",
                         "returns": "any",
-                        "note": "需要数据库连接"
+                        "note": "建议使用新的db.table.field语法"
                     },
                     "get_standard_name(description)": {
                         "description": "获取标准商品名称",
@@ -437,6 +443,20 @@ class RulesManagementService:
                     "*": "乘法",
                     "/": "除法",
                     "%": "取模"
+                }
+            },
+            "database_query_syntax": {
+                "description": "数据库查询语法示例",
+                "examples": {
+                    "单条件查询": "db.companies.tax_number[name=invoice.supplier.name]",
+                    "多条件查询": "db.tax_rates.rate[category=$category, amount>=$total]",
+                    "查询所有字段": "db.companies[name='携程广州']",
+                    "使用变量": "db.companies.category[name=$supplier_name]",
+                    "默认值处理": "db.companies.category[name=$name] or 'GENERAL'"
+                },
+                "supported_tables": {
+                    "companies": ["name", "tax_number", "category", "address", "email"],
+                    "tax_rates": ["category", "rate", "min_amount", "max_amount"]
                 }
             }
         }

@@ -10,30 +10,29 @@ field_completion_rules:
   apply_to: invoice.supplier.tax_no == null
   id: completion_002
   priority: 100
-  rule_expression: db_query('get_tax_number_by_name', invoice.supplier.name)
+  rule_expression: db.companies.tax_number[name=invoice.supplier.name]
   rule_name: 从DB补全供应商税号
   target_field: supplier.tax_no
 - active: true
   apply_to: invoice.customer.tax_no == null
   id: completion_003
   priority: 100
-  rule_expression: db_query('get_tax_number_by_name', invoice.customer.name)
+  rule_expression: db.companies.tax_number[name=invoice.customer.name]
   rule_name: 从DB补全客户税号
   target_field: customer.tax_no
 - active: true
   apply_to: '!has(invoice.extensions.supplier_category)'
   id: completion_004a
   priority: 99
-  rule_expression: db_query('get_company_category_by_name', invoice.supplier.name)
-    + '_111'
+  rule_expression: db.companies.category[name=invoice.supplier.name]
   rule_name: 从DB获取供应商分类
   target_field: extensions.supplier_category
 - active: true
   apply_to: invoice.total_amount > 0 && has(invoice.extensions.supplier_category)
   id: completion_004b
   priority: 80
-  rule_expression: invoice.total_amount * db_query('get_tax_rate_by_category_and_amount',
-    invoice.extensions.supplier_category, invoice.total_amount)
+  rule_expression: invoice.total_amount * db.tax_rates.rate[category=invoice.extensions.supplier_category,
+    min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]
   rule_name: 智能税率计算
   target_field: tax_amount
 - active: true
@@ -61,8 +60,8 @@ field_completion_rules:
   apply_to: has(invoice.extensions.supplier_category)
   id: completion_008
   priority: 50
-  rule_expression: db_query('get_tax_rate_by_category_and_amount', invoice.extensions.supplier_category,
-    invoice.total_amount)
+  rule_expression: db.tax_rates.rate[category=invoice.extensions.supplier_category,
+    min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]
   rule_name: 动态税率查询
   target_field: extensions.dynamic_tax_rate
 - active: false
@@ -102,6 +101,13 @@ field_completion_rules:
   rule_expression: item.amount * item.tax_rate
   rule_name: 计算商品税额
   target_field: items[].tax_amount
+- active: true
+  apply_to: ''
+  id: temp_rule_001
+  priority: 1
+  rule_expression: '''test_value'''
+  rule_name: 临时测试规则
+  target_field: extensions.test_field
 field_validation_rules:
 - active: true
   apply_to: ''
@@ -169,7 +175,7 @@ field_validation_rules:
   field_path: supplier.name
   id: validation_011
   priority: 75
-  rule_expression: db_query('get_tax_number_by_name', invoice.supplier.name) != null
+  rule_expression: db.companies.tax_number[name=invoice.supplier.name] != null
   rule_name: 验证供应商在数据库中存在
 - active: false
   apply_to: ''

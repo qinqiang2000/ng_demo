@@ -182,6 +182,10 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
     // 移除引号
     const cleaned = valueStr.replace(/^['"]|['"]$/g, '');
     
+    // 特殊值处理
+    if (cleaned === 'null') return 'null';
+    if (cleaned === 'undefined') return 'undefined';
+    
     // 尝试解析为数字
     if (!isNaN(Number(cleaned))) {
       return Number(cleaned);
@@ -246,9 +250,17 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           expr += `${fieldPath}.matches('${condition.value}')`;
           break;
         default:
-          const valueStr = typeof condition.value === 'string' 
-            ? `'${condition.value}'` 
-            : condition.value;
+          let valueStr;
+          if (typeof condition.value === 'string') {
+            // 特殊值不加引号
+            if (condition.value === 'null' || condition.value === 'undefined') {
+              valueStr = condition.value;
+            } else {
+              valueStr = `'${condition.value}'`;
+            }
+          } else {
+            valueStr = condition.value;
+          }
           expr += `${fieldPath} ${condition.operator} ${valueStr}`;
       }
       

@@ -358,7 +358,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 rows={3}
                 placeholder={
                   ruleType === 'completion'
-                    ? "如: invoice.total_amount * 0.06"
+                    ? "如: invoice.total_amount * 0.06 或 db.companies.tax_number[name=invoice.supplier.name]"
                     : "如: has(invoice.supplier.name) && invoice.supplier.name != ''"
                 }
               />

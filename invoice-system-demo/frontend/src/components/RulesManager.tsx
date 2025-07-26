@@ -72,7 +72,7 @@ const RulesManager: React.FC = () => {
     setEditorMode('edit');
     setEditingRule({
       id: rule.id,
-      rule_name: rule.name,
+      rule_name: rule.rule_name || rule.name || '',
       apply_to: rule.apply_to,
       target_field: rule.target_field,
       field_path: rule.field_path,
@@ -197,7 +197,7 @@ const RulesManager: React.FC = () => {
         </Popconfirm>
       ]}
     >
-      <Descriptions title={rule.name} size="small" column={1}>
+      <Descriptions title={rule.rule_name || rule.name} size="small" column={1}>
         <Descriptions.Item label="ID">{rule.id}</Descriptions.Item>
         <Descriptions.Item label="状态">
           {rule.active ? (
@@ -255,7 +255,7 @@ const RulesManager: React.FC = () => {
         </Popconfirm>
       ]}
     >
-      <Descriptions title={rule.name} size="small" column={1}>
+      <Descriptions title={rule.rule_name || rule.name} size="small" column={1}>
         <Descriptions.Item label="ID">{rule.id}</Descriptions.Item>
         <Descriptions.Item label="状态">
           {rule.active ? (
@@ -304,6 +304,10 @@ const RulesManager: React.FC = () => {
             <p>2. 校验规则：验证字段是否符合业务要求</p>
             <p>3. 优先级数值越大，执行顺序越靠前</p>
             <p>4. 支持CEL表达式语法和自定义函数</p>
+            <p>5. <strong>新功能：</strong>极简数据库查询语法 <code>db.table.field[条件]</code></p>
+            <p style={{ marginLeft: 20, fontSize: '12px' }}>
+              例如：<code>db.companies.tax_number[name=invoice.supplier.name]</code>
+            </p>
           </div>
         }
         type="info"

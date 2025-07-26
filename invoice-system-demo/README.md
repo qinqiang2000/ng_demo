@@ -2,6 +2,19 @@
 
 基于KDUBL和规则引擎的配置化开票系统演示
 
+## 🚀 最新更新 (v0.19)
+
+### 极简数据库查询语法
+- **新语法**: `db.table.field[conditions]` 取代繁琐的 `db_query()` 函数
+- **示例**: `db.companies.tax_number[name=invoice.supplier.name]`
+- **优势**: 更直观、无需预定义查询模板、自动类型推断
+
+### 完整的规则管理系统
+- 可视化规则编辑器
+- 规则热加载功能
+- 表达式实时验证
+- LLM 辅助规则生成
+
 ## 系统架构
 
 本Demo实现了文档中描述的核心功能：
@@ -99,6 +112,14 @@ field_completion_rules:
     rule_expression: "'CN'"
     priority: 100
     active: true
+    
+  - id: "completion_002"
+    rule_name: "从数据库补全供应商税号"
+    apply_to: "invoice.supplier.tax_no == null"
+    target_field: "supplier.tax_no"
+    rule_expression: "db.companies.tax_number[name=invoice.supplier.name]"  # 新语法
+    priority: 100
+    active: true
 ```
 
 ### 校验规则示例
@@ -179,6 +200,21 @@ invoice.total_amount > 5000 || invoice.items.size() > 10
 // 数学运算
 invoice.total_amount * 0.06
 invoice.total_amount - invoice.tax_amount
+```
+
+#### 数据库查询（新语法）
+```cel
+// 单条件查询
+db.companies.tax_number[name=invoice.supplier.name]
+
+// 多条件查询
+db.tax_rates.rate[category=$category, min_amount<=$amount, max_amount>=$amount]
+
+// 查询所有字段
+db.companies[name='携程广州']
+
+// 带默认值
+db.companies.category[name=$name] or 'GENERAL'
 ```
 
 #### 字符串操作
