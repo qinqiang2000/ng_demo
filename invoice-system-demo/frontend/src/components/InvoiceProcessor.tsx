@@ -223,13 +223,13 @@ const InvoiceProcessor: React.FC = () => {
                 }`,
                 borderRadius: '4px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className="log-icon" style={{ marginRight: '8px', fontSize: '14px' }}>
                     {log.status === 'success' || log.status === 'passed' ? '✅' : 
                      log.status === 'skipped' ? '⏭️' :
                      log.status === 'failed' ? '❌' : '❓'}
                   </span>
-                  <span className="log-message" style={{ flex: 1 }}>
+                  <span className="log-message" style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <strong>{log.rule_name}</strong>
                     <Tag 
                       color={
@@ -237,30 +237,30 @@ const InvoiceProcessor: React.FC = () => {
                         log.status === 'skipped' ? 'orange' :
                         log.status === 'failed' ? 'red' : 'red'
                       }
-                      style={{ marginLeft: 8, fontSize: '11px' }}
+                      style={{ fontSize: '11px' }}
                     >
                       {log.status}
                     </Tag>
                     {/* 成功时显示设置的字段和值 */}
                     {log.status === 'success' && log.target_field && log.value && (
-                      <span style={{ marginLeft: 8, color: '#666', fontSize: '12px' }}>
-                        → {log.item_index !== undefined ? 
+                      <span style={{ color: '#666', fontSize: '12px' }}>
+                        {log.item_index !== undefined ? 
                             log.target_field.replace('items[]', `items[${log.item_index}]`) : 
-                            log.target_field} = <code style={{ backgroundColor: '#f5f5f5', padding: '1px 4px' }}>{log.value}</code>
+                            log.target_field}: <code style={{ backgroundColor: '#f5f5f5', padding: '1px 4px' }}>{log.value}</code>
                       </span>
                     )}
                     {/* 跳过时显示原因 */}
                     {log.status === 'skipped' && log.reason && (
-                      <span style={{ marginLeft: 8, color: '#999', fontSize: '12px' }}>
+                      <span style={{ color: '#999', fontSize: '12px' }}>
                         ({log.reason === 'condition_not_met' ? '条件不满足' : 
                           log.reason === 'inactive' ? '规则未激活' : log.reason})
                       </span>
                     )}
-                    {/* 失败时显示错误消息 */}
+                    {/* 失败时显示错误消息 - 改为内联显示 */}
                     {(log.status === 'failed' || log.status === 'error') && log.error && (
-                      <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                      <span style={{ color: '#ff4d4f', fontSize: '12px' }}>
                         错误: {log.error}
-                      </div>
+                      </span>
                     )}
                   </span>
                 </div>
@@ -506,7 +506,7 @@ const InvoiceProcessor: React.FC = () => {
                                    log.status === 'skipped' ? '⏭️' :
                                    log.status === 'failed' ? '❌' : '❓'}
                                 </span>
-                                <span className="log-message" style={{ flex: 1 }}>
+                                <span className="log-message" style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                   <strong>{log.rule_name}</strong>
                                   <Tag 
                                     color={
@@ -514,28 +514,28 @@ const InvoiceProcessor: React.FC = () => {
                                       log.status === 'skipped' ? 'orange' :
                                       log.status === 'failed' ? 'red' : 'red'
                                     }
-                                    style={{ marginLeft: 8, fontSize: '11px' }}
+                                    style={{ fontSize: '11px' }}
                                   >
                                     {log.status}
                                   </Tag>
                                   {/* 成功时显示设置的字段和值 */}
                                   {log.status === 'success' && log.target_field && log.value && (
-                                    <div style={{ marginTop: 4, color: '#52c41a', fontSize: '12px' }}>
+                                    <span style={{ color: '#52c41a', fontSize: '12px' }}>
                                       {log.target_field}: <strong>{log.value}</strong>
-                                    </div>
+                                    </span>
                                   )}
                                   {/* 跳过时显示原因 */}
                                   {log.status === 'skipped' && log.reason && (
-                                    <span style={{ marginLeft: 8, color: '#faad14', fontSize: '12px' }}>
+                                    <span style={{ color: '#faad14', fontSize: '12px' }}>
                                       ({log.reason === 'condition_not_met' ? '条件不满足' : 
                                         log.reason === 'inactive' ? '规则未激活' : log.reason})
                                     </span>
                                   )}
                                   {/* 失败时显示错误消息 */}
                                   {(log.status === 'failed' || log.status === 'error') && log.error && (
-                                    <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                                    <span style={{ color: '#ff4d4f', fontSize: '12px' }}>
                                       错误: {log.error}
-                                    </div>
+                                    </span>
                                   )}
                                 </span>
                               </div>
@@ -607,7 +607,7 @@ const InvoiceProcessor: React.FC = () => {
                                    log.status === 'skipped' ? '⏭️' :
                                    log.status === 'failed' ? '❌' : '❓'}
                                 </span>
-                                <span className="log-message" style={{ flex: 1 }}>
+                                <span className="log-message" style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                   <strong>{log.rule_name}</strong>
                                   <Tag 
                                     color={
@@ -615,21 +615,21 @@ const InvoiceProcessor: React.FC = () => {
                                       log.status === 'skipped' ? 'orange' :
                                       log.status === 'failed' ? 'red' : 'red'
                                     }
-                                    style={{ marginLeft: 8, fontSize: '11px' }}
+                                    style={{ fontSize: '11px' }}
                                   >
                                     {log.status}
                                   </Tag>
                                   {/* 验证规则的详细信息 */}
                                   {log.message && (
-                                    <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                                    <span style={{ fontSize: '12px', color: '#666' }}>
                                       {log.message}
-                                    </div>
+                                    </span>
                                   )}
                                   {/* 失败时显示错误消息 */}
                                   {(log.status === 'failed' || log.status === 'error') && log.error && (
-                                    <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: '12px' }}>
+                                    <span style={{ color: '#ff4d4f', fontSize: '12px' }}>
                                       错误: {log.error}
-                                    </div>
+                                    </span>
                                   )}
                                 </span>
                               </div>
