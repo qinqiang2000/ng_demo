@@ -11,7 +11,8 @@ import {
   Typography,
   Tooltip,
   Switch,
-  Divider
+  Divider,
+  message
 } from 'antd';
 import {
   PlusOutlined,
@@ -64,11 +65,13 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
   const [visualMode, setVisualMode] = useState(false);
   const prevValueRef = useRef<string>();
   const isInitializedRef = useRef(false);
+  const textValueRef = useRef<string>('');
 
   // 初始化效果：只在组件挂载时运行
   useEffect(() => {
     if (!isInitializedRef.current) {
       if (value && value.trim()) {
+        textValueRef.current = value;
         // 简单情况下才启用可视化模式
         if (isSimpleExpression(value)) {
           parseExpression(value);
@@ -77,6 +80,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           setVisualMode(false);
         }
       } else {
+        textValueRef.current = '';
         setConditions([createEmptyCondition()]);
         setVisualMode(true);
       }
@@ -90,6 +94,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
   useEffect(() => {
     if (isInitializedRef.current && value !== prevValueRef.current) {
       if (value && value.trim()) {
+        textValueRef.current = value;
         if (isSimpleExpression(value)) {
           parseExpression(value);
           setVisualMode(true);
@@ -97,6 +102,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           setVisualMode(false);
         }
       } else {
+        textValueRef.current = '';
         setConditions([createEmptyCondition()]);
         setVisualMode(true);
       }
@@ -206,6 +212,33 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
     operator: '==',
     value: ''
   });
+
+  const handleModeChange = (newVisualMode: boolean) => {
+    if (newVisualMode) {
+      // 切换到可视化模式
+      const currentText = textValueRef.current || value || '';
+      if (currentText && currentText.trim()) {
+        if (isSimpleExpression(currentText)) {
+          parseExpression(currentText);
+        } else {
+          // 复杂表达式无法解析，保持文本模式，不切换
+          message.warning('当前表达式过于复杂，无法在可视化模式下编辑，请使用文本模式');
+          return; // 不切换模式
+        }
+      } else {
+        setConditions([createEmptyCondition()]);
+      }
+    } else {
+      // 切换到文本模式
+      const currentExpression = generateExpression();
+      textValueRef.current = currentExpression;
+      // 触发外部onChange以保持同步
+      if (currentExpression !== value) {
+        onChange?.(currentExpression);
+      }
+    }
+    setVisualMode(newVisualMode);
+  };
 
   const addCondition = () => {
     setConditions([...conditions, createEmptyCondition()]);
@@ -393,7 +426,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           <Text>编辑模式:</Text>
           <Switch
             checked={visualMode}
-            onChange={setVisualMode}
+            onChange={handleModeChange}
             checkedChildren="可视化"
             unCheckedChildren="文本"
           />
@@ -425,8 +458,11 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
         </div>
       ) : (
         <Input.TextArea
-          value={value}
-          onChange={(e) => onChange?.(e.target.value)}
+          value={textValueRef.current || value || ''}
+          onChange={(e) => {
+            textValueRef.current = e.target.value;
+            onChange?.(e.target.value);
+          }}
           placeholder={placeholder}
           rows={3}
         />

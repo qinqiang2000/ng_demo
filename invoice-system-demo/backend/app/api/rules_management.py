@@ -368,25 +368,48 @@ async def get_available_functions():
 @router.post("/generate-llm")
 async def generate_rule_with_llm(request: RuleGenerationRequest, db: AsyncSession = Depends(get_db)):
     """使用LLM生成规则"""
+    from ..utils.logger import get_logger
+    logger = get_logger(__name__)
+    
+    logger.info("="*50)
+    logger.info("🎯 API端点: /generate-llm 被调用")
+    logger.info(f"📝 请求描述: {request.description}")
+    logger.info(f"🔧 规则类型: {request.rule_type}")
+    logger.info(f"🌐 上下文: {request.context}")
+    logger.info(f"📚 示例: {request.examples}")
+    
     try:
+        logger.info("🚀 初始化LLM服务...")
         llm_service = LLMService()
+        
+        logger.info("🎲 调用LLM生成规则...")
         result = await llm_service.generate_rule(request)
         
+        logger.info(f"📥 LLM服务返回结果: success={result.get('success')}")
+        
         if not result["success"]:
+            logger.error(f"❌ LLM生成失败: {result.get('error')}")
             raise HTTPException(status_code=400, detail=result["error"])
         
         # 验证生成的规则表达式
+        logger.info("🔍 开始验证生成的规则表达式...")
         rules_service = RulesManagementService()
         rule_data = result["data"]
         
+        logger.info(f"📋 生成的规则数据键: {list(rule_data.keys())}")
+        
         if "rule_expression" in rule_data:
+            logger.info(f"🧮 验证表达式: {rule_data['rule_expression']}")
             validation_result = await rules_service.validate_expression(
                 rule_data["rule_expression"], 
                 request.rule_type, 
                 db
             )
             
+            logger.info(f"✅ 表达式验证结果: valid={validation_result.get('valid')}")
+            
             if not validation_result["valid"]:
+                logger.error(f"❌ 生成的规则表达式语法错误: {validation_result.get('error')}")
                 return {
                     "success": False,
                     "error": f"生成的规则表达式语法错误: {validation_result['error']}",
@@ -395,18 +418,32 @@ async def generate_rule_with_llm(request: RuleGenerationRequest, db: AsyncSessio
                 }
         
         # 关闭LLM服务连接
+        logger.info("🔌 关闭LLM服务连接...")
         await llm_service.close()
+        
+        logger.info("="*50)
+        logger.info("🎉 LLM规则生成API调用成功完成!")
+        logger.info("="*50)
         
         return {
             "success": True,
             "data": rule_data,
             "message": "规则生成成功",
-            "prompt_info": result.get("prompt_used", "")
+            "prompt_info": result.get("prompt_used", ""),
+            "debug_info": result.get("debug_info", {}),
+            "llm_response_preview": result.get("llm_response", "")[:200] + "..."
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error("="*50)
+        logger.error("💥 LLM规则生成API调用异常!")
+        logger.error(f"🚨 异常信息: {e}")
+        logger.error(f"🔍 异常类型: {type(e).__name__}")
+        import traceback
+        logger.error(f"📍 异常堆栈:\n{traceback.format_exc()}")
+        logger.error("="*50)
         raise HTTPException(status_code=500, detail=str(e))
 
 

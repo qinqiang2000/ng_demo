@@ -82,11 +82,14 @@ class CELBusinessValidationEngine:
                 
                 # 如果校验失败，记录错误
                 if not validation_result:
+                    # 解析field_path为实际的字段路径
+                    actual_field_path = self._parse_field_path(rule.field_path) if hasattr(rule, 'field_path') else None
                     error_entry = {
                         "rule_name": rule.rule_name,
                         "error_message": rule.error_message,
                         "severity": getattr(rule, 'severity', 'error'),
                         "field": getattr(rule, 'field_path', None),
+                        "actual_field_path": actual_field_path,
                         "validation_expression": rule.rule_expression
                     }
                     self.validation_errors.append(error_entry)
@@ -95,6 +98,8 @@ class CELBusinessValidationEngine:
                          "type": "validation",
                          "status": "failed",
                          "rule_name": rule.rule_name,
+                         "field_path": getattr(rule, 'field_path', None),
+                         "actual_field_path": actual_field_path,
                          "error_message": rule.error_message,
                          "message": f"❌ {rule.rule_name}(failed)→ {rule.error_message}"
                      })
@@ -136,6 +141,25 @@ class CELBusinessValidationEngine:
         # 返回校验结果和错误列表
         error_messages = [error["error_message"] for error in self.validation_errors]
         return is_valid, error_messages
+    
+    def _parse_field_path(self, field_path: str) -> str:
+        """解析field_path，支持CEL格式和传统路径格式
+        
+        Args:
+            field_path: 可能是 'invoice.customer.email' 或 'customer.email'
+            
+        Returns:
+            实际的字段路径，如 'customer.email'
+        """
+        if field_path and field_path.startswith('invoice.'):
+            # CEL格式：去掉invoice前缀
+            actual_path = field_path[8:]  # 去掉 'invoice.'
+            logger.debug(f"CEL格式field_path: {field_path} -> {actual_path}")
+            return actual_path
+        else:
+            # 传统路径格式：直接使用
+            logger.debug(f"传统格式field_path: {field_path}")
+            return field_path or ''
     
     def get_validation_errors(self) -> List[Dict[str, Any]]:
         """获取校验错误列表"""
@@ -189,10 +213,13 @@ class DatabaseCELBusinessValidationEngine(CELBusinessValidationEngine):
                 
                 # 如果校验失败，记录错误
                 if not validation_result:
+                    # 解析field_path为实际的字段路径
+                    actual_field_path = self._parse_field_path(rule.field_path) if hasattr(rule, 'field_path') else None
                     error_entry = {
                         "rule_name": rule.rule_name,
                         "error_message": rule.error_message,
                         "severity": getattr(rule, 'severity', 'error'),
+                        "actual_field_path": actual_field_path,
                         "field": getattr(rule, 'field_path', None),
                         "validation_expression": rule.rule_expression
                     }

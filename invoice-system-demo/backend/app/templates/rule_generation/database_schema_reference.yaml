@@ -1,0 +1,168 @@
+# Database Schema Reference for Smart Queries
+# Available tables and fields for db.table.field[conditions] syntax
+
+tables:
+  companies:
+    description: "企业信息表"
+    key_field: "name"
+    fields:
+      name: 
+        type: "string"
+        description: "企业名称"
+        indexed: true
+        
+      tax_number:
+        type: "string"
+        description: "税号"
+        unique: true
+        
+      category:
+        type: "string" 
+        description: "企业分类"
+        values: ["TECH", "TRAVEL", "GENERAL", "SERVICE", "MANUFACTURING"]
+        
+      address:
+        type: "string"
+        description: "企业地址"
+        
+      phone:
+        type: "string"
+        description: "联系电话"
+        
+      email:
+        type: "string"
+        description: "邮箱地址"
+        
+      is_active:
+        type: "boolean"
+        description: "是否启用"
+        default: true
+
+  tax_rates:
+    description: "税率配置表"
+    key_field: "category"
+    fields:
+      name:
+        type: "string"
+        description: "税率名称"
+        
+      rate:
+        type: "decimal"
+        description: "税率值"
+        range: [0.0, 1.0]
+        
+      category:
+        type: "string"
+        description: "适用类别"
+        values: ["TECH", "TRAVEL", "GENERAL", "SERVICE"]
+        
+      min_amount:
+        type: "decimal"
+        description: "最小适用金额"
+        default: 0
+        
+      max_amount:
+        type: "decimal"
+        description: "最大适用金额"
+        nullable: true
+        
+      is_active:
+        type: "boolean"
+        description: "是否启用"
+        default: true
+
+  business_rules:
+    description: "业务规则配置表"
+    key_field: "rule_id"
+    fields:
+      rule_id:
+        type: "string"
+        description: "规则ID"
+        unique: true
+        
+      rule_name:
+        type: "string"
+        description: "规则名称"
+        
+      rule_type:
+        type: "string"
+        description: "规则类型"
+        values: ["completion", "validation"]
+        
+      rule_expression:
+        type: "text"
+        description: "规则表达式"
+        
+      is_active:
+        type: "boolean"
+        description: "是否启用"
+
+query_patterns:
+  single_field_lookup:
+    pattern: "db.{table}.{field}[{conditions}]"
+    example: "db.companies.tax_number[name=invoice.supplier.name]"
+    description: "查询单个字段值"
+    
+  all_fields_lookup:
+    pattern: "db.{table}[{conditions}]"
+    example: "db.companies[name='携程广州']"
+    description: "查询记录的所有字段"
+    
+  conditional_lookup:
+    pattern: "db.{table}.{field}[{field1}={value1}, {field2}={value2}]"
+    example: "db.tax_rates.rate[category='TECH', min_amount<=1000, max_amount>=1000]"
+    description: "多条件查询"
+
+common_queries:
+  company_tax_number:
+    query: "db.companies.tax_number[name=invoice.supplier.name]"
+    description: "根据企业名称查询税号"
+    fallback: "\"\""
+    
+  company_category:
+    query: "db.companies.category[name=invoice.supplier.name]"
+    description: "根据企业名称查询分类"
+    fallback: "\"GENERAL\""
+    
+  tax_rate_by_category:
+    query: "db.tax_rates.rate[category=invoice.extensions.supplier_category]"
+    description: "根据分类查询税率"
+    fallback: "0.06"
+    
+  tax_rate_by_amount:
+    query: "db.tax_rates.rate[category=$category, min_amount<=$amount, max_amount>=$amount]"
+    description: "根据分类和金额范围查询税率"
+    usage: "需要传入category和amount变量"
+    
+  company_email:
+    query: "db.companies.email[name=invoice.customer.name]"
+    description: "根据企业名称查询邮箱"
+    fallback: "\"\""
+
+query_operators:
+  equality: "field=value"
+  inequality: "field!=value"
+  comparison: "field>value, field>=value, field<value, field<=value"
+  membership: "field IN ['val1', 'val2']"
+  exclusion: "field NOT IN ['val1']"
+  pattern: "field LIKE '%pattern%'"
+  range: "field BETWEEN min AND max"
+
+value_formatting:
+  string_values: "Use single or double quotes: 'value' or \"value\""
+  numeric_values: "Use plain numbers: 1000, 0.06"
+  boolean_values: "Use true/false (lowercase)"
+  null_values: "Use null"
+  array_values: "Use square brackets: ['item1', 'item2']"
+
+variable_references:
+  context_variables: "Use $ prefix: $supplier_name"
+  field_references: "Use dot notation: invoice.supplier.name"
+  item_context: "Available in item-level rules: item.description"
+
+best_practices:
+  - Always provide fallback values for queries that might return null
+  - Use indexed fields (name, category) for better performance  
+  - Consider using variables for dynamic conditions
+  - Limit queries to essential data only
+  - Handle null results gracefully

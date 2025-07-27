@@ -1,0 +1,185 @@
+# Common Rule Patterns for LLM Generation
+# Template-based patterns with examples
+
+completion_patterns:
+  database_lookup:
+    name: "数据库查询补全"
+    description: "从数据库查询并补全缺失字段"
+    template: "db.{table}.{field}[{conditions}]"
+    examples:
+      - rule_expression: "db.companies.tax_number[name=invoice.supplier.name]"
+        target_field: "supplier.tax_no"
+        description: "从企业表查询供应商税号"
+        
+      - rule_expression: "db.companies.category[name=invoice.supplier.name]"
+        target_field: "extensions.supplier_category"
+        description: "查询供应商分类"
+        
+      - rule_expression: "db.tax_rates.rate[category=invoice.extensions.supplier_category, min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]"
+        target_field: "extensions.dynamic_tax_rate"
+        description: "根据分类和金额查询税率"
+
+  calculation:
+    name: "计算补全"
+    description: "基于已有字段进行计算补全"
+    template: "{expression}"
+    examples:
+      - rule_expression: "invoice.total_amount * 0.06"
+        target_field: "tax_amount"
+        description: "按默认税率计算税额"
+        
+      - rule_expression: "invoice.total_amount - invoice.tax_amount"
+        target_field: "net_amount"
+        description: "计算净额"
+        
+      - rule_expression: "invoice.total_amount * db.tax_rates.rate[category=invoice.extensions.supplier_category, min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]"
+        target_field: "tax_amount"
+        description: "动态税率计算"
+
+  conditional_assignment:
+    name: "条件赋值"
+    description: "根据条件设置不同值"
+    template: "{condition} ? {value1} : {value2}"
+    examples:
+      - rule_expression: "invoice.total_amount > 5000 ? 'LARGE' : 'NORMAL'"
+        target_field: "extensions.amount_level"
+        description: "根据金额设置级别"
+        
+      - rule_expression: "invoice.items.size() > 5 ? 'BULK_ORDER' : 'REGULAR'"
+        target_field: "extensions.order_type"
+        description: "根据项目数量设置订单类型"
+
+  default_value:
+    name: "默认值设置"
+    description: "设置固定默认值"
+    template: "'{value}'"
+    examples:
+      - rule_expression: "'CN'"
+        target_field: "country"
+        description: "设置默认国家"
+        
+      - rule_expression: "'GENERAL'"
+        target_field: "extensions.default_category"
+        description: "设置默认分类"
+
+  api_function:
+    name: "API函数调用"
+    description: "调用产品API函数补全"
+    template: "{function_name}({parameters})"
+    examples:
+      - rule_expression: "get_standard_name(item.description)"
+        target_field: "items[].name"
+        description: "获取标准商品名称"
+        
+      - rule_expression: "get_tax_rate(item.description)"
+        target_field: "items[].tax_rate"
+        description: "获取商品税率"
+
+validation_patterns:
+  required_field:
+    name: "必填字段校验"
+    description: "检查字段是否存在且非空"
+    template: "has({field}) && {field} != ''"
+    examples:
+      - rule_expression: "has(invoice.invoice_number) && invoice.invoice_number != ''"
+        field_path: "invoice_number"
+        error_message: "发票号码不能为空"
+        
+      - rule_expression: "has(invoice.supplier.name) && invoice.supplier.name != ''"
+        field_path: "supplier.name"
+        error_message: "供应商名称不能为空"
+
+  format_validation:
+    name: "格式校验"
+    description: "使用正则表达式校验格式"
+    template: "{field}.matches('{pattern}')"
+    examples:
+      - rule_expression: "invoice.supplier.tax_no.matches('^[0-9]{15}[A-Z0-9]{3}$')"
+        field_path: "supplier.tax_no"
+        error_message: "供应商税号格式错误，应为15位数字+3位字母数字组合"
+        
+      - rule_expression: "invoice.customer.email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
+        field_path: "customer.email"
+        error_message: "客户邮箱格式错误"
+
+  range_validation:
+    name: "范围校验"
+    description: "校验数值是否在指定范围内"
+    template: "{field} >= {min} && {field} <= {max}"
+    examples:
+      - rule_expression: "invoice.total_amount > 0"
+        field_path: "total_amount"
+        error_message: "发票总金额必须大于0"
+        
+      - rule_expression: "invoice.tax_amount >= invoice.total_amount * 0.05 && invoice.tax_amount <= invoice.total_amount * 0.13"
+        field_path: "tax_amount"
+        error_message: "税额应在总金额的5%-13%范围内"
+
+  conditional_validation:
+    name: "条件校验"
+    description: "根据条件进行校验"
+    template: "{condition} ? {validation} : true"
+    examples:
+      - rule_expression: "has(invoice.customer.tax_no) && invoice.customer.tax_no != ''"
+        apply_to: "invoice.total_amount > 5000"
+        field_path: "customer.tax_no"
+        error_message: "金额超过5000的发票，客户税号必填"
+
+  list_validation:
+    name: "列表校验"
+    description: "校验列表中的所有元素"
+    template: "{list}.all(item, {condition})"
+    examples:
+      - rule_expression: "invoice.items.all(item, item.amount > 0 && item.quantity > 0)"
+        field_path: "items"
+        error_message: "所有项目的金额和数量必须大于0"
+        
+      - rule_expression: "invoice.items.all(item, item.name.matches('^(住宿|餐饮|交通费).*'))"
+        apply_to: "invoice.extensions.supplier_category == 'TRAVEL_SERVICE'"
+        field_path: "items"
+        error_message: "旅游服务发票项目描述不规范"
+
+  database_existence:
+    name: "数据库存在性校验"
+    description: "验证数据在数据库中存在"
+    template: "db.{table}.{field}[{conditions}] != null"
+    examples:
+      - rule_expression: "db.companies.tax_number[name=invoice.supplier.name] != null"
+        field_path: "supplier.name"
+        error_message: "供应商在系统数据库中不存在"
+
+rule_structure:
+  completion_rule:
+    required_fields: ["id", "rule_name", "target_field", "rule_expression"]
+    optional_fields: ["apply_to", "priority", "active"]
+    defaults:
+      priority: 50
+      active: true
+      
+  validation_rule:
+    required_fields: ["id", "rule_name", "field_path", "rule_expression", "error_message"]
+    optional_fields: ["apply_to", "priority", "active"]
+    defaults:
+      priority: 50
+      active: true
+
+common_apply_conditions:
+  - description: "字段为空时应用"
+    condition: "{field} == null"
+    
+  - description: "字段不存在时应用"
+    condition: "!has({field})"
+    
+  - description: "金额超过阈值时应用"
+    condition: "invoice.total_amount > {amount}"
+    
+  - description: "特定分类时应用"
+    condition: "invoice.extensions.supplier_category == '{category}'"
+    
+  - description: "项目数量超过限制时应用"
+    condition: "invoice.items.size() > {count}"
+
+priority_guidelines:
+  high_priority: 90-100  # 基础必填字段，关键计算
+  medium_priority: 50-89  # 一般补全，常规校验
+  low_priority: 10-49    # 扩展字段，辅助校验

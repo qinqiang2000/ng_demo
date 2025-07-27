@@ -1,0 +1,56 @@
+# Rule Syntax Reference for LLM Rule Generation
+# Compact guide assuming basic CEL and UBL knowledge
+
+syntax_overview:
+  cel_expressions: |
+    Standard CEL expressions with invoice object context.
+    Access fields using dot notation: invoice.supplier.name
+    
+  smart_query_syntax: |
+    Database queries: db.table.field[conditions]
+    Query all fields: db.table[conditions]
+    
+  item_level_rules: |
+    Use items[].field_name for item-level targets
+    Access item context with 'item' variable
+
+operators:
+  comparison: ["==", "!=", ">", ">=", "<", "<="]
+  logical: ["&&", "||", "!"]
+  membership: ["IN", "NOT IN"]
+  pattern: ["LIKE", "matches()"]
+  existence: ["has()"]
+
+common_conditions:
+  null_check: "has(field) && field != ''"
+  amount_check: "invoice.total_amount > 0"
+  item_exists: "invoice.items.size() > 0"
+  category_match: "invoice.extensions.supplier_category == 'TECH'"
+
+value_types:
+  string: "'value'" 
+  number: "1000"
+  decimal: "0.06"
+  boolean: "true/false"
+  null: "null"
+  array: "['item1', 'item2']"
+
+examples:
+  completion:
+    database_lookup: "db.companies.tax_number[name=invoice.supplier.name]"
+    calculation: "invoice.total_amount * 0.06"
+    conditional: "invoice.total_amount > 5000 ? 'LARGE' : 'NORMAL'"
+    default_value: "'CN'"
+    
+  validation:
+    required_field: "has(invoice.invoice_number) && invoice.invoice_number != ''"
+    format_check: "invoice.supplier.tax_no.matches('^[0-9]{15}[A-Z0-9]{3}$')"
+    range_check: "invoice.tax_amount >= invoice.total_amount * 0.05"
+    list_validation: "invoice.items.all(item, item.amount > 0)"
+
+best_practices:
+  - Use has() before accessing nullable fields
+  - Prefer specific conditions over broad ones
+  - Include meaningful error messages for validation
+  - Consider edge cases and default values
+  - Use appropriate data types for comparisons

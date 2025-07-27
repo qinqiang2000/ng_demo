@@ -62,11 +62,11 @@ const App: React.FC = () => {
                 icon: <SettingOutlined />,
                 label: '规则管理',
               },
-              {
-                key: '3',
-                icon: <ApiOutlined />,
-                label: '连接器',
-              },
+              // {
+              //   key: '3',
+              //   icon: <ApiOutlined />,
+              //   label: '连接器',
+              // },
               {
                 key: '4',
                 icon: <DatabaseOutlined />,

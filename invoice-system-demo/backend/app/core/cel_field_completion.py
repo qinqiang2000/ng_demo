@@ -123,6 +123,25 @@ class CELFieldCompletionEngine:
         
         return domain
     
+    def _parse_target_field_path(self, target_field: str) -> str:
+        """解析target_field，支持CEL格式和传统路径格式
+        
+        Args:
+            target_field: 可能是 'invoice.customer.email' 或 'customer.email'
+            
+        Returns:
+            实际的字段路径，如 'customer.email'
+        """
+        if target_field.startswith('invoice.'):
+            # CEL格式：去掉invoice前缀
+            actual_path = target_field[8:]  # 去掉 'invoice.'
+            logger.debug(f"CEL格式target_field: {target_field} -> {actual_path}")
+            return actual_path
+        else:
+            # 传统路径格式：直接使用
+            logger.debug(f"传统格式target_field: {target_field}")
+            return target_field
+    
     def _process_items_rule(self, rule: FieldCompletionRule, domain: InvoiceDomainObject):
         """处理items[]语法的规则"""
         logger.debug(f"_process_items_rule 开始: 规则={rule.rule_name}, 优先级={rule.priority}, 目标字段={rule.target_field}")
@@ -291,15 +310,18 @@ class DatabaseCELFieldCompletionEngine(CELFieldCompletionEngine):
         
         # 设置字段值
         if field_value is not None:
-            success = self.evaluator._set_field_value(domain, rule.target_field, field_value)
+            # 解析target_field为实际的字段路径
+            actual_field_path = self._parse_target_field_path(rule.target_field)
+            success = self.evaluator._set_field_value(domain, actual_field_path, field_value)
             if success:
                 log_entry = {
                     "type": "completion",
                     "status": "success",
                     "rule_name": rule.rule_name,
                     "target_field": rule.target_field,
+                    "actual_field_path": actual_field_path,
                     "value": field_value,
-                    "message": f"字段补全成功: {rule.rule_name} - {rule.target_field} = {field_value}"
+                    "message": f"字段补全成功: {rule.rule_name} - {rule.target_field} -> {actual_field_path} = {field_value}"
                 }
                 self.execution_log.append(log_entry)
                 print(log_entry["message"])
@@ -309,7 +331,8 @@ class DatabaseCELFieldCompletionEngine(CELFieldCompletionEngine):
                     "status": "failed",
                     "rule_name": rule.rule_name,
                     "target_field": rule.target_field,
-                    "message": f"字段补全失败: {rule.rule_name} - 无法设置字段 {rule.target_field}"
+                    "actual_field_path": actual_field_path,
+                    "message": f"字段补全失败: {rule.rule_name} - 无法设置字段 {rule.target_field} -> {actual_field_path}"
                 }
                 self.execution_log.append(log_entry)
                 print(log_entry["message"])

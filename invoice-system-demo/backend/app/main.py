@@ -14,6 +14,7 @@ from .connectors.base import BusinessConnectorRegistry
 from .database.connection import init_database, get_db
 from .api.data_management import router as data_router
 from .api.rules_management import router as rules_router
+from .api.endpoints.rule_generation import router as rule_generation_router
 
 app = FastAPI(
     title="下一代开票系统 MVP Demo",
@@ -38,6 +39,7 @@ connector_registry = BusinessConnectorRegistry()
 # 注册路由
 app.include_router(data_router)
 app.include_router(rules_router)
+app.include_router(rule_generation_router, prefix="/api")
 
 # 挂载静态文件服务 - 示例数据（统一使用backend/data目录）
 data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -72,7 +74,8 @@ async def root():
             "validate": "/api/invoice/validate", 
             "rules": "/api/rules",
             "connectors": "/api/connectors",
-            "data": "/api/data"
+            "data": "/api/data",
+            "rule_generation": "/api/rule-generation"
         }
     }
 

@@ -1,0 +1,169 @@
+# Domain Model Reference for Invoice Processing
+# Field paths and types for InvoiceDomainObject
+
+invoice_structure:
+  basic_info:
+    invoice_number: 
+      path: "invoice.invoice_number"
+      type: "string"
+      required: true
+      description: "发票号码"
+    
+    issue_date:
+      path: "invoice.issue_date" 
+      type: "date"
+      required: true
+      description: "开票日期"
+      
+    invoice_type:
+      path: "invoice.invoice_type"
+      type: "string" 
+      description: "发票类型"
+      
+    country:
+      path: "invoice.country"
+      type: "string"
+      default: "CN"
+      description: "国家代码"
+
+  amounts:
+    total_amount:
+      path: "invoice.total_amount"
+      type: "decimal"
+      required: true
+      description: "总金额"
+      
+    tax_amount:
+      path: "invoice.tax_amount"
+      type: "decimal"
+      description: "税额"
+      
+    net_amount:
+      path: "invoice.net_amount" 
+      type: "decimal"
+      description: "净额"
+
+  parties:
+    supplier:
+      name:
+        path: "invoice.supplier.name"
+        type: "string"
+        required: true
+        description: "供应商名称"
+        
+      tax_no:
+        path: "invoice.supplier.tax_no"
+        type: "string"
+        description: "供应商税号"
+        pattern: "^[0-9]{15}[A-Z0-9]{3}$"
+        
+      email:
+        path: "invoice.supplier.email"
+        type: "string"
+        description: "供应商邮箱"
+        pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+        
+      address:
+        path: "invoice.supplier.address"
+        type: "object"
+        description: "供应商地址"
+        
+    customer:
+      name:
+        path: "invoice.customer.name"
+        type: "string"
+        required: true
+        description: "客户名称"
+        
+      tax_no:
+        path: "invoice.customer.tax_no"
+        type: "string"
+        description: "客户税号"
+
+  items:
+    collection:
+      path: "invoice.items"
+      type: "list"
+      description: "发票项目列表"
+      
+    item_fields:
+      name:
+        path: "items[].name"
+        type: "string"
+        description: "标准商品名称"
+        
+      description:
+        path: "items[].description"
+        type: "string"
+        required: true
+        description: "商品描述"
+        
+      quantity:
+        path: "items[].quantity"
+        type: "decimal"
+        required: true
+        description: "数量"
+        
+      unit_price:
+        path: "items[].unit_price"
+        type: "decimal"
+        required: true
+        description: "单价"
+        
+      amount:
+        path: "items[].amount"
+        type: "decimal"
+        required: true
+        description: "金额"
+        
+      tax_rate:
+        path: "items[].tax_rate"
+        type: "decimal"
+        description: "税率"
+        
+      tax_amount:
+        path: "items[].tax_amount"
+        type: "decimal"
+        description: "税额"
+
+  extensions:
+    root:
+      path: "invoice.extensions"
+      type: "dict"
+      description: "动态扩展字段"
+      
+    common_extensions:
+      supplier_category:
+        path: "invoice.extensions.supplier_category"
+        type: "string"
+        description: "供应商分类"
+        values: ["TECH", "TRAVEL", "GENERAL", "SERVICE"]
+        
+      invoice_type:
+        path: "invoice.extensions.invoice_type"
+        type: "string"
+        description: "发票分类标识"
+        
+      dynamic_tax_rate:
+        path: "invoice.extensions.dynamic_tax_rate"
+        type: "decimal" 
+        description: "动态税率"
+
+field_access_patterns:
+  simple_field: "invoice.{field_name}"
+  nested_field: "invoice.{parent}.{field}"
+  list_field: "invoice.items"
+  item_field: "items[].{field_name}"
+  extension_field: "invoice.extensions.{extension_name}"
+
+validation_helpers:
+  existence_check: "has(invoice.{field_name})"
+  non_empty_check: "has(invoice.{field_name}) && invoice.{field_name} != ''"
+  positive_amount: "invoice.{amount_field} > 0"
+  list_not_empty: "invoice.items.size() > 0"
+  
+common_calculations:
+  tax_calculation: "invoice.total_amount * {tax_rate}"
+  net_calculation: "invoice.total_amount - invoice.tax_amount" 
+  item_sum: "invoice.items.map(item, item.amount).reduce(sum, sum + _)"
+  item_count: "invoice.items.size()"

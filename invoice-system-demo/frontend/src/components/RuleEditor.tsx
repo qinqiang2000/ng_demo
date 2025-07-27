@@ -60,6 +60,8 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
   const [llmLoading, setLlmLoading] = useState(false);
   const [yamlContent, setYamlContent] = useState('');
   const [yamlError, setYamlError] = useState('');
+  const [generatedRulePreview, setGeneratedRulePreview] = useState<any>(null);
+  const [showRulePreview, setShowRulePreview] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -168,17 +170,12 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
 
       if (res.data.success) {
         const generatedRule = res.data.data;
-        form.setFieldsValue({
-          rule_name: generatedRule.rule_name,
-          apply_to: generatedRule.apply_to || '',
-          target_field: generatedRule.target_field,
-          field_path: generatedRule.field_path,
-          rule_expression: generatedRule.rule_expression,
-          error_message: generatedRule.error_message,
-          priority: generatedRule.priority,
-          active: generatedRule.active
-        });
-        message.success('规则生成成功！请检查并调整生成的规则');
+        
+        // 显示生成的规则预览
+        setGeneratedRulePreview(generatedRule);
+        setShowRulePreview(true);
+        
+        message.success('规则生成成功！请查看预览并确认是否保存');
       } else {
         message.error(`规则生成失败: ${res.data.error}`);
       }
@@ -188,6 +185,67 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
     } finally {
       setLlmLoading(false);
     }
+  };
+
+  const handleSaveGeneratedRule = async () => {
+    if (!generatedRulePreview) return;
+    
+    try {
+      setLoading(true);
+      
+      // 直接保存生成的规则
+      onSave(generatedRulePreview);
+      
+      // 关闭预览和模态框
+      setShowRulePreview(false);
+      setGeneratedRulePreview(null);
+      form.resetFields();
+      setValidationResult(null);
+      
+      message.success('AI生成的规则已保存');
+    } catch (error) {
+      console.error('保存AI生成规则失败:', error);
+      message.error('保存规则失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelGeneratedRule = () => {
+    setShowRulePreview(false);
+    setGeneratedRulePreview(null);
+  };
+
+  const renderGeneratedRuleYaml = (rule: any) => {
+    if (!rule) return '';
+    
+    const yamlData = {
+      id: rule.id || 'generated_rule',
+      rule_name: rule.rule_name || '',
+      apply_to: rule.apply_to || '',
+      ...(ruleType === 'completion' ? {
+        target_field: rule.target_field || '',
+        rule_expression: rule.rule_expression || ''
+      } : {
+        field_path: rule.field_path || '',
+        rule_expression: rule.rule_expression || '',
+        error_message: rule.error_message || ''
+      }),
+      priority: rule.priority || (ruleType === 'completion' ? 50 : 100),
+      active: rule.active !== undefined ? rule.active : true
+    };
+    
+    return Object.entries(yamlData)
+      .map(([key, value]) => {
+        if (typeof value === 'string') {
+          return `${key}: "${value}"`;
+        } else if (typeof value === 'boolean') {
+          return `${key}: ${value}`;
+        } else {
+          return `${key}: ${value}`;
+        }
+      })
+      .join('\n');
   };
 
   const updateYamlFromForm = (formData?: any) => {
@@ -545,9 +603,93 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
               生成规则
             </Button>
 
+            {showRulePreview && generatedRulePreview && (
+              <Card 
+                title="生成的规则预览" 
+                style={{ marginTop: 16 }}
+                extra={
+                  <Space>
+                    <Button 
+                      type="primary" 
+                      size="small"
+                      loading={loading}
+                      onClick={handleSaveGeneratedRule}
+                    >
+                      保存规则
+                    </Button>
+                    <Button 
+                      size="small"
+                      onClick={handleCancelGeneratedRule}
+                    >
+                      取消
+                    </Button>
+                  </Space>
+                }
+              >
+                <Alert
+                  message="请仔细检查生成的规则"
+                  description="AI生成的规则仅供参考，请确认无误后再保存"
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                />
+                
+                <div style={{ marginBottom: 8 }}>
+                  <Text strong>规则名称：</Text>
+                  <Text>{generatedRulePreview.rule_name}</Text>
+                </div>
+                
+                <div style={{ marginBottom: 8 }}>
+                  <Text strong>应用条件：</Text>
+                  <Text code>{generatedRulePreview.apply_to || '(无条件)'}</Text>
+                </div>
+                
+                {ruleType === 'completion' && (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>目标字段：</Text>
+                    <Text code>{generatedRulePreview.target_field}</Text>
+                  </div>
+                )}
+                
+                {ruleType === 'validation' && (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>校验字段：</Text>
+                    <Text code>{generatedRulePreview.field_path}</Text>
+                  </div>
+                )}
+                
+                <div style={{ marginBottom: 8 }}>
+                  <Text strong>规则表达式：</Text>
+                  <Text code>{generatedRulePreview.rule_expression}</Text>
+                </div>
+                
+                {ruleType === 'validation' && generatedRulePreview.error_message && (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>错误信息：</Text>
+                    <Text>{generatedRulePreview.error_message}</Text>
+                  </div>
+                )}
+                
+                <Collapse size="small" style={{ marginTop: 12 }}>
+                  <Panel header="YAML格式查看" key="yaml">
+                    <TextArea
+                      value={renderGeneratedRuleYaml(generatedRulePreview)}
+                      rows={8}
+                      readOnly
+                      style={{ 
+                        fontFamily: 'Monaco, Consolas, monospace', 
+                        fontSize: '12px',
+                        backgroundColor: '#f5f5f5'
+                      }}
+                    />
+                  </Panel>
+                </Collapse>
+              </Card>
+            )}
+
             <Alert
               message="提示"
-              description="AI生成的规则仅供参考，请仔细检查并根据实际需求调整"
+              description="AI生成的规则仅供参考，点击保存规则后将直接保存，无需手动填写表单"
               type="warning"
               showIcon
               style={{ marginTop: 16 }}
