@@ -151,8 +151,8 @@ Two types of configurable rules:
 ```yaml
 - id: "completion_tax"
   rule_name: "计算税额"
-  apply_to: "invoice.total_amount > 0 AND !has(invoice.tax_amount)"
-  target_field: "tax_amount"  
+  apply_to: "invoice.total_amount > 0 && !has(invoice.tax_amount)"
+  target_field: "invoice.tax_amount"  
   rule_expression: "invoice.total_amount * 0.06"
   priority: 90
   active: true
@@ -163,8 +163,8 @@ Two types of configurable rules:
 - id: "validation_large_amount"
   rule_name: "大额发票必须有税号"
   apply_to: "invoice.total_amount > 5000"
-  field_path: "supplier.tax_number"
-  rule_expression: "has(invoice.supplier.tax_number) AND invoice.supplier.tax_number != ''"
+  field_path: "invoice.supplier.tax_no"
+  rule_expression: "has(invoice.supplier.tax_no) && invoice.supplier.tax_no != ''"
   error_message: "金额超过5000元的发票必须提供供应商税号"
   priority: 100
   active: true

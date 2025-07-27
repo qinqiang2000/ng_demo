@@ -81,10 +81,11 @@
 
 本方案采用**分层架构**和**规则引擎**设计：
 
-- **技术栈**：使用CEL（Common Expression Language）作为主规则表达式语言，类型安全且高性能；通用的合规校验用xml xsd 和 schema做校验
+- **技术栈**：使用CEL（Common Expression Language）作为主规则表达式语言，提供类型安全、高性能的表达式求值能力，支持智能查询语法`db.table.field[conditions]`简化数据库访问；通用的合规校验用xml xsd 和 schema做校验
 - **架构特点**：统一业务数据入口，KDUBL为核心格式，业务层与通道层分离，支持私有化部署和公有云混合部署
 - **数据模型**：核心字段结构化存储 + KDUBL XML全文存储，兼顾查询性能和数据完整性
 - **扩展性**：通过注册自定义函数扩展CEL能力，满足复杂业务场景
+- **模块化设计**：CEL引擎采用模块化架构，包含cel_evaluator（表达式求值）、cel_field_completion（字段补全）、cel_validation（业务校验）等专用模块
 - **可观测性**：完整的规则执行日志和状态追踪，便于调试和审计
 
 ```mermaid
@@ -282,7 +283,7 @@ erDiagram
         string tenant_id
         string rule_name
         string apply_to         "应用条件"
-        string target_field     "目标字段路径(Domain Object)"
+        string target_field     "目标字段路径(CEL格式)"
         string rule_expression  "CEL表达式，返回字段值"
         int    priority         "执行优先级"
         boolean active
@@ -294,7 +295,7 @@ erDiagram
         string tenant_id
         string rule_name
         string apply_to         "应用条件"
-        string field_path       "要校验的字段路径(Domain Object)"
+        string field_path       "要校验的字段路径(CEL格式)"
         string rule_expression  "CEL表达式，返回true/false"
         string error_message    "校验失败的错误信息"
         int    priority         "执行优先级"
@@ -571,7 +572,7 @@ graph TB
         string tenant_id
         string rule_name
         string apply_to         "应用条件"
-        string target_field     "目标字段路径(Domain Object)"
+        string target_field     "目标字段路径(CEL格式)"
         string rule_expression  "CEL表达式，返回字段值"
         int    priority         "执行优先级"
         boolean active
@@ -583,7 +584,7 @@ graph TB
         string tenant_id
         string rule_name
         string apply_to         "应用条件"
-        string field_path       "要校验的字段路径(Domain Object)"
+        string field_path       "要校验的字段路径(CEL格式)"
         string rule_expression  "CEL表达式，返回true/false"
         string error_message    "校验失败的错误信息"
         int    priority         "执行优先级"
@@ -643,8 +644,8 @@ graph TB
 | **COMPLIANCE_VALIDATION_LOG** | 合规校验日志，记录通道层的校验结果                     | 通道层执行合规校验时                                         | `validation_type`：校验类型<br>`validation_result`：校验结果<br>`errors`：详细错误信息 | `(invoice_id, validated_at)` 索引                            | ◆ 用于合规审计追踪<br>◆ 支持重复校验记录                     |
 | **INVOICE_STATE_LOG**         | 事件溯源表，记录 INVOICE_TASK 与 INVOICE 的状态跃迁    | 每次状态机从 A→B 时立即追加一条                              | `entity_type`：`INVOICE_TASK` or `INVOICE`<br>`trigger_event`：`SUBMIT` 等<br>`payload`：差异快照或错误详情 | `(entity_type, entity_id, created_at)` 复合索引              | ◆ 只追加、不更新<br>◆ 回放/审计必备                          |
 | **RULE_EXECUTION_LOG**        | 规则引擎执行明细，用于调试、追溯和 AI 训练             | 每条规则执行完毕落一条                                       | `input_data`：Domain Object 快照<br>`output_data`：执行结果<br>`execution_result`：`success / failed / skipped`<br>`execution_time_ms`：性能监控 | `(task_id, executed_at)` 索引                                | ◆ 建议冷热分层：近期在线检索，历史归档                       |
-| **FIELD_COMPLETION_RULES**    | CEL 补全规则：基于Domain Object的字段补全              | 配置中心 PR 合并后下发                                       | `rule_expression`：CEL 表达式<br>`apply_to`：使用范围条件<br>`target_field`：Domain Object字段路径 | `(tenant_id, active)` 过滤索引                               | ◆ 操作Domain Object<br>◆ 内存中执行                          |
-| **FIELD_VALIDATION_RULES**    | CEL 校验规则：基于Domain Object的字段校验              | 配置中心 PR 合并后下发                                       | `rule_expression`：CEL 表达式<br>`apply_to`：使用范围条件<br>`field_path`：Domain Object字段路径 | `(tenant_id, active)` 过滤索引                               | ◆ 操作Domain Object<br>◆ 内存中执行                          |
+| **FIELD_COMPLETION_RULES**    | CEL 补全规则：基于Domain Object的字段补全              | 配置中心 PR 合并后下发                                       | `rule_expression`：CEL 表达式<br>`apply_to`：使用范围条件<br>`target_field`：CEL格式字段路径 | `(tenant_id, active)` 过滤索引                               | ◆ 操作Domain Object<br>◆ 内存中执行                          |
+| **FIELD_VALIDATION_RULES**    | CEL 校验规则：基于Domain Object的字段校验              | 配置中心 PR 合并后下发                                       | `rule_expression`：CEL 表达式<br>`apply_to`：使用范围条件<br>`field_path`：CEL格式字段路径 | `(tenant_id, active)` 过滤索引                               | ◆ 操作Domain Object<br>◆ 内存中执行                          |
 | **COMPLIANCE_TEMPLATE**       | 合规模板 (XSD + 税务规则)，通道层校验KDUBL是否符合法规 | 根据法规/版本更新<br>或新增国别时导入                        | `schema_definition`：XML XSD<br>`tax_rules`：税务规则JSON<br>`effective_date`：模板生效时间 | `(country, invoice_type, version)` 唯一                      | ◆ 由通道层使用<br>◆ 验证 KDUBL 格式                          |
 | **UI_DEFAULT_CONFIG**         | 系统级 UI 基础布局（字段次序、label 等）               | 国别/票种变化或 UI 迭代                                      | `ui_schema`：JSONForm / Formily 等配置<br>`apply_to`：应用条件表达式<br>`metadata`：优先级、描述等 | `(country, invoice_type, version)` 唯一<br>`metadata->>'priority'` 索引 | ◆ 基于KDUBL字段定义<br>◆ 支持条件化UI配置                    |
 | **UI_CUSTOM_FIELDS**          | 租户/组织自定义扩展字段                                | 客户管理员配置或 API 导入                                    | `custom_fields`：新增字段定义                                | `(tenant_id, org_id, active)` 索引                           | ◆ 与 `UI_DEFAULT_CONFIG` 合并后渲染前端                      |
@@ -886,16 +887,16 @@ graph TB
 # 字段校验规则 - 操作Domain Object
 field_validation_rules:
   - rule_name: "校验税号格式"
-    apply_to: "country='CN'"
-    field_path: "customer.taxNo"
-    rule_expression: "invoice.customer.taxNo.matches('^[A-Z0-9]{15,20}$')"
+    apply_to: "invoice.country == 'CN'"
+    field_path: "invoice.customer.tax_no"
+    rule_expression: "has(invoice.customer.tax_no) && invoice.customer.tax_no.matches('^[A-Z0-9]{15,20}$')"
     error_message: "税号必须是15-20位字母数字"
     priority: 100
     
   - rule_name: "校验代理人必填"
-    apply_to: "supplier.country='DE' AND customer.country='NL'"
-    field_path: "extensions.taxAgent"
-    rule_expression: "has(invoice.extensions.taxAgent) && invoice.extensions.taxAgent != ''"
+    apply_to: "invoice.supplier.country == 'DE' && invoice.customer.country == 'NL'"
+    field_path: "invoice.extensions.tax_agent"
+    rule_expression: "has(invoice.extensions.tax_agent) && invoice.extensions.tax_agent != ''"
     error_message: "德国到荷兰的发票必须填写税务代理人"
     priority: 90
 
@@ -903,36 +904,30 @@ field_validation_rules:
 field_completion_rules:
   # 简单赋值 - 直接操作Domain Object
   - rule_name: "补全卖方税率"
-    apply_to: "country='CN' AND invoiceType='VAT_SPECIAL'"
-    target_field: "supplier.taxRate"  # Domain Object路径
+    apply_to: "invoice.country == 'CN' && invoice.invoice_type == 'VAT_SPECIAL'"
+    target_field: "invoice.supplier.tax_rate"  # CEL格式字段路径
     rule_expression: "0.13"
     priority: 100
     
-  # 数据库查询补全 - 查询结果赋值给Domain Object
+  # 数据库查询补全 - 智能查询语法
   - rule_name: "补全买方地址"
-    apply_to: "country='CN' AND !has(customer.address)"
-    target_field: "customer.address"  # Domain Object路径
-    rule_expression: |
-      db.organization.get(invoice.customer.taxNo).registered_address
+    apply_to: "invoice.country == 'CN' && !has(invoice.customer.address)"
+    target_field: "invoice.customer.address"  # CEL格式字段路径
+    rule_expression: "db.companies.address[name=invoice.customer.name]"
     priority: 50
     
   # 混合使用 - 基于Domain Object数据查询，结果赋值回Domain Object
   - rule_name: "补全税务代理人"
-    apply_to: "supplier.country='DE' AND customer.country='NL'"
-    target_field: "extensions.taxAgent"  # Domain Object路径
-    rule_expression: |
-      db.tax_agent.find({
-        'from_country': invoice.supplier.country,  # 读取Domain Object
-        'to_country': invoice.customer.country,     # 读取Domain Object
-        'tax_number': invoice.supplier.taxNo        # 读取Domain Object
-      })
+    apply_to: "invoice.supplier.country == 'DE' && invoice.customer.country == 'NL'"
+    target_field: "invoice.extensions.tax_agent"  # CEL格式字段路径
+    rule_expression: "db.tax_agent.agent_name[from_country=invoice.supplier.country, to_country=invoice.customer.country]"
     priority: 40
     
   # 计算字段
   - rule_name: "计算商品税额"
-    apply_to: "country='CN' AND has(invoice.items)"
-    target_field: "items[0].taxAmount"
-    rule_expression: "invoice.items[0].amount * invoice.items[0].taxRate"
+    apply_to: "invoice.country == 'CN' && has(invoice.items)"
+    target_field: "invoice.items[0].tax_amount"
+    rule_expression: "invoice.items[0].amount * invoice.items[0].tax_rate"
     priority: 60
 ```
 
@@ -1104,62 +1099,21 @@ public class InvoiceQueryService {
 
 > 1. 假设所有补全数据都来自数据库表（且无需通过表关联获取），如果不满足，则应该通过由另外的模块使其满足（宽表等方式）
 
-#### 数据模型声明
-
-通过YAML配置声明可用的数据源，无需编写代码：
-
-```yaml
-# data_models.yaml - 数据源声明
-data_models:
-  # 税务代理人表
-  tax_agent:
-    table: "master_data.tax_agents"
-    key_field: "id"
-    search_fields:
-      - from_country
-      - to_country
-      - tax_number
-    return_fields:
-      - agent_name
-      - agent_tax_id
-      - agent_address
-      - contact_email
-    cache_ttl: 3600  # 缓存1小时
-  
-  # 组织主数据
-  organization:
-    table: "master_data.organizations"  
-    key_field: "tax_number"
-    search_fields:
-      - tax_number
-      - org_name
-    return_fields:
-      - registered_address
-      - legal_name
-      - industry_code
-    cache_ttl: 86400  # 缓存24小时
-```
-
-#### 在补全规则中使用
+#### 智能查询语法使用
 
 ```yaml
 field_completion_rules:
-  # 使用db.table.get()获取单条数据
+  # 使用智能查询语法获取单条数据
   - rule_name: "补全客户注册地址"
-    apply_to: "!has(customer.address)"
-    target_field: "customer.address"
-    rule_expression: |
-      db.organization.get(invoice.customer.taxNo).registered_address
+    apply_to: "!has(invoice.customer.address)"
+    target_field: "invoice.customer.address"
+    rule_expression: "db.companies.address[tax_number=invoice.customer.tax_no]"
       
-  # 使用db.table.find()条件查询
+  # 使用智能查询语法进行条件查询
   - rule_name: "补全税务代理人"
-    apply_to: "supplier.country='DE' AND customer.country='NL'"
-    target_field: "extensions.taxAgent"
-    rule_expression: |
-      db.tax_agent.find({
-        'from_country': invoice.supplier.country,
-        'to_country': invoice.customer.country
-      }).agent_name
+    apply_to: "invoice.supplier.country == 'DE' && invoice.customer.country == 'NL'"
+    target_field: "invoice.extensions.tax_agent"
+    rule_expression: "db.tax_agent.agent_name[from_country=invoice.supplier.country, to_country=invoice.customer.country]"
 ```
 
 #### 实现架构
@@ -1167,166 +1121,195 @@ field_completion_rules:
 ```mermaid
 graph TB
     subgraph "CEL表达式"
-        A[db.table.get/find]
+        A["db.table.field[conditions]"]
+    end
+    
+    subgraph "智能查询解析器"
+        B[SmartQueryParser]
+        C[查询语法解析]
+        D[SQL构建器]
     end
     
     subgraph "数据访问层"
-        B[DatabaseProxy]
-        C[DatabaseAccessor]
-        D[查询构建器]
+        E[SQLAlchemy]
+        F[数据库连接池]
     end
     
-    subgraph "基础设施"
-        E[JDBC]
-        F[缓存层]
-        G[监控]
-    end
-    
-    subgraph "配置管理"
-        H[data_models.yaml]
-        I[权限配置]
+    subgraph "表映射配置"
+        G[TABLE_MAPPING]
+        H[FIELD_MAPPING]
     end
     
     A --> B
     B --> C
     C --> D
     D --> E
-    C --> F
-    C --> G
-    H --> C
-    I --> C
+    E --> F
+    G --> B
+    H --> B
 ```
 
 #### 核心实现(参考)
 
-```java
-@Component
-public class DatabaseAccessor {
-    @Autowired
-    private JdbcTemplate jdbc;
+```python
+class SmartQueryParser:
+    """智能查询语法解析器"""
     
-    @Autowired
-    private DataModelRegistry registry;
+    # 表名映射（从逻辑表名映射到实际表名）
+    TABLE_MAPPING = {
+        'companies': 'companies',
+        'tax_rates': 'tax_rates', 
+        'tax_agent': 'tax_agents'
+    }
     
-    @Autowired
-    private CacheManager cache;
-    
-    /**
-     * 单条查询 - db.table.get(key)
-     */
-    @Cacheable(value = "db_data", 
-               key = "#model + ':get:' + #key",
-               condition = "#model.cacheTtl > 0")
-    public Map<String, Object> get(String model, Object key) {
-        DataModel meta = registry.getModel(model);
-        String sql = buildSelectSql(meta, meta.getKeyField() + " = ?");
-        
-        try {
-            return jdbc.queryForMap(sql, key);
-        } catch (EmptyResultDataAccessException e) {
-            return Collections.emptyMap();
+    # 字段映射（处理特殊字段名）
+    FIELD_MAPPING = {
+        'companies': {
+            'name': 'name',
+            'tax_number': 'tax_number',
+            'email': 'email',
+            'address': 'address'
+        },
+        'tax_agents': {
+            'agent_name': 'agent_name',
+            'from_country': 'from_country',
+            'to_country': 'to_country'
         }
     }
     
-    /**
-     * 条件查询 - db.table.find(conditions)
-     */
-    @Cacheable(value = "db_data",
-               key = "#model + ':find:' + #conditions.hashCode()",
-               condition = "#model.cacheTtl > 0")
-    public Map<String, Object> find(String model, Map<String, Object> conditions) {
-        DataModel meta = registry.getModel(model);
+    def parse(self, expression: str) -> Dict[str, Any]:
+        """
+        解析查询表达式: db.companies.email[name=invoice.supplier.name]
         
-        // 只使用声明的搜索字段
-        Map<String, Object> validConditions = conditions.entrySet().stream()
-            .filter(e -> meta.getSearchFields().contains(e.getKey()))
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Returns:
+            {
+                'table': 'companies',
+                'select': 'email', 
+                'where': [{'field': 'name', 'op': '=', 'value': 'invoice.supplier.name'}],
+                'limit': 1
+            }
+        """
+        match = self.query_pattern.match(expression.strip())
+        if not match:
+            raise ValueError(f"无效的查询语法: {expression}")
             
-        if (validConditions.isEmpty()) {
-            throw new IllegalArgumentException("No valid search fields in conditions");
-        }
+        table_name = match.group(1)
+        field_name = match.group(2) or '*'
+        conditions_str = match.group(3)
         
-        String sql = buildSelectSql(meta, buildWhereClause(validConditions));
-        Object[] params = validConditions.values().toArray();
+        conditions = self._parse_conditions(conditions_str)
         
-        try {
-            return jdbc.queryForMap(sql + " LIMIT 1", params);
-        } catch (EmptyResultDataAccessException e) {
-            return Collections.emptyMap();
+        return {
+            'table': table_name,
+            'select': field_name,
+            'where': conditions,
+            'limit': 1
         }
-    }
+
+class DatabaseCELExpressionEvaluator:
+    """支持数据库查询的CEL表达式求值器"""
     
-    private String buildSelectSql(DataModel model, String whereClause) {
-        return String.format("SELECT %s FROM %s WHERE %s",
-            String.join(",", model.getReturnFields()),
-            model.getTable(),
-            whereClause
-        );
-    }
-}
+    def __init__(self, db_session: AsyncSession):
+        self.db_session = db_session
+        self.parser = SmartQueryParser()
+        
+    async def evaluate_db_query(self, expression: str, context: Dict[str, Any]) -> Any:
+        """执行数据库查询表达式"""
+        query_info = self.parser.parse(expression)
+        
+        # 构建SQL查询
+        table = query_info['table']
+        select_field = query_info['select']
+        conditions = query_info['where']
+        
+        # 映射到实际表名
+        actual_table = self.parser.TABLE_MAPPING.get(table, table)
+        
+        # 构建查询条件
+        where_clauses = []
+        params = {}
+        
+        for condition in conditions:
+            field = condition['field']
+            op = condition['op']  
+            value = self._resolve_value(condition['value'], context)
+            
+            param_key = f"param_{len(params)}"
+            where_clauses.append(f"{field} {op} :{param_key}")
+            params[param_key] = value
+            
+        where_clause = " AND ".join(where_clauses)
+        
+        if select_field == '*':
+            sql = f"SELECT * FROM {actual_table} WHERE {where_clause} LIMIT 1"
+        else:
+            sql = f"SELECT {select_field} FROM {actual_table} WHERE {where_clause} LIMIT 1"
+            
+        # 执行查询
+        result = await self.db_session.execute(text(sql), params)
+        row = result.fetchone()
+        
+        if row and select_field != '*':
+            return row[0]  # 返回单个字段值
+        elif row:
+            return dict(row._mapping)  # 返回整行数据
+        else:
+            return None
 ```
 
 #### 安全控制
 
-```yaml
-# 数据访问控制配置
-data_access_control:
-  # 全局规则
-  global:
-    allowed_schemas:
-      - "master_data"
-      - "reference_data"
-    denied_tables:
-      - "*.users"
-      - "*.passwords"
-      - "audit.*"
+智能查询解析器内置了安全控制机制：
+
+```python
+class SmartQueryParser:
+    # 只允许访问预定义的表
+    ALLOWED_TABLES = {'companies', 'tax_rates', 'tax_agents'}
     
-  # 租户级别规则
-  tenant_rules:
-    - tenant_id: "tenant_123"
-      additional_models:
-        custom_tax_agent:
-          table: "tenant_123.tax_agents"
-          inherit_from: "tax_agent"  # 继承标准模型配置
-      row_level_filter: "tenant_id = :current_tenant_id"
+    # 禁止的字段模式
+    FORBIDDEN_FIELDS = {'password', 'secret', 'private_key'}
+    
+    def validate_query(self, table: str, field: str) -> bool:
+        """验证查询安全性"""
+        if table not in self.ALLOWED_TABLES:
+            raise SecurityError(f"不允许访问表: {table}")
+            
+        if any(forbidden in field.lower() for forbidden in self.FORBIDDEN_FIELDS):
+            raise SecurityError(f"不允许访问字段: {field}")
+            
+        return True
 ```
 
 #### 扩展示例
 
 当业务需要新的数据补全时，只需两步：
 
-```yaml
-# 步骤1：声明数据模型
-data_models:
-  industry_tax_config:
-    table: "master_data.industry_tax_configs"
-    key_field: "industry_code"
-    search_fields: 
-      - industry_code
-      - country
-    return_fields:
-      - special_requirements
-      - tax_exemptions
-    cache_ttl: 7200
+```python
+# 步骤1：在SmartQueryParser中添加表映射
+TABLE_MAPPING = {
+    'companies': 'companies',
+    'tax_rates': 'tax_rates', 
+    'tax_agents': 'tax_agents',
+    'industry_config': 'industry_tax_configs'  # 新增
+}
 
-# 步骤2：在规则中使用
-field_completion_rules:
-  - rule_name: "补全行业特殊要求"
-    apply_to: "has(customer.industryCode)"
-    target_field: "extensions.industryRequirements"
-    rule_expression: |
-      db.industry_tax_config.find({
-        'industry_code': invoice.customer.industryCode,
-        'country': invoice.country
-      }).special_requirements
+ALLOWED_TABLES = {'companies', 'tax_rates', 'tax_agents', 'industry_config'}  # 允许访问
 ```
 
-这种设计实现了：
+```yaml
+# 步骤2：在规则中直接使用
+field_completion_rules:
+  - rule_name: "补全行业特殊要求"
+    apply_to: "has(invoice.customer.industry_code)"
+    target_field: "invoice.extensions.industry_requirements"
+    rule_expression: "db.industry_config.special_requirements[industry_code=invoice.customer.industry_code, country=invoice.country]"
+```
 
-- **零代码扩展**：新数据源通过配置即可使用
-- **统一接口**：简洁的db.table.get/find语法
-- **性能优化**：内置缓存机制
-- **安全可控**：声明式权限管理
+**设计优势：**
+- **极简扩展**：只需添加表映射即可使用
+- **统一语法**：`db.table.field[conditions]` 语法简洁明了
+- **内置安全**：白名单机制防止非法访问
+- **高性能**：直接SQL查询，无额外抽象层开销
 
 ### 总结
 
