@@ -1321,7 +1321,30 @@ field_completion_rules:
 4. **清晰的职责划分**：业务连接器负责转换，业务层负责处理，通道层负责合规
 5. **配置化的规则引擎**：所有业务规则通过CEL表达式配置，操作Domain Object
 
-## 6. 配套工具
+## 6. 配套
+
+### 6.1 配置发布流程
+
+```mermaid
+sequenceDiagram
+    participant Dev as 开发者
+    participant Git as Git仓库
+    participant CI as CI/CD
+    participant Test as 测试环境
+    participant Prod as 生产数据库
+    
+    Dev->>Git: 提交YAML配置
+    Git->>CI: 触发Pipeline
+    CI->>CI: 语法校验
+    CI->>CI: CEL表达式验证
+    CI->>Test: 部署到测试环境
+    Test->>Test: 执行自动化测试
+    Test->>Test: 影子流量验证
+    Test-->>CI: 测试通过
+    CI->>Prod: 发布到生产
+    Prod->>Prod: 更新FIELD_COMPLETION_RULES和FIELD_VALIDATION_RULES表
+    Prod->>Prod: 刷新规则缓存
+```
 
 ### 6.3 规则测试工具
 
