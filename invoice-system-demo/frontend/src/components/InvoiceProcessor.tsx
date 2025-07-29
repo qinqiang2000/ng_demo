@@ -34,7 +34,7 @@ const InvoiceProcessor: React.FC = () => {
 
   const loadSampleFile = async (filename: string) => {
     try {
-      const response = await fetch(`/data/${filename}`);
+      const response = await fetch(`http://localhost:8000/data/${filename}`);
       const text = await response.text();
       
       if (inputMode === 'text') {
@@ -62,7 +62,7 @@ const InvoiceProcessor: React.FC = () => {
     try {
       let combinedContent = '';
       for (const filename of samples) {
-        const response = await fetch(`/data/${filename}`);
+        const response = await fetch(`http://localhost:8000/data/${filename}`);
         const text = await response.text();
         if (combinedContent) {
           combinedContent += '\n\n<!-- ' + filename + ' -->\n' + text;

@@ -462,6 +462,37 @@ graph TB
 
 > **注意**：基础资料系统的具体设计超出本文档范围，此处仅定义接口契约和使用方式。
 
+##### 与苍穹/ERP的关系：
+
+```mermaid
+graph TD
+    A[ERP<br/>├─FPY插件] -.->|配置| D[配置/同步组织,基础资料]
+    A -.->|操作| E[推送业务数据]
+    A -.->|处理| F[结果反写]
+    
+    D -.->|同步| C[苍穹组织/<br/>权限/基础资料]
+    
+    E -.->|调用| G[发票云业务层]
+    F -.->|调用| G
+    G -.->|调用| C
+    G --> H[通道]
+    
+    C -.-> I[(db)]
+    G -.-> J[(db)]
+    H -.-> K[(db)]
+    
+    style A fill:#e6f3ff,stroke:#4d79a4,stroke-width:2px
+    style C fill:#e6f3ff,stroke:#4d79a4,stroke-width:2px
+    style G fill:#e6f3ff,stroke:#4d79a4,stroke-width:2px
+    style H fill:#e6f3ff,stroke:#4d79a4,stroke-width:2px
+    style I fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style J fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style K fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    
+    classDef dashed stroke-dasharray: 5 5,stroke:#9673a6,fill:#f8cecc,color:#333
+    class D,E,F dashed
+```
+
 #### 5.1.6 实体关系总览
 
 下图展示了所有实体之间的完整关系：
@@ -1097,7 +1128,7 @@ public class InvoiceQueryService {
 
 补全完成本系统目标中，最难的一个模块。因此基于"保持简单"/“单一职责”的原则，系统采用声明式的数据库访问机制来支持灵活的数据补全需求。
 
-> 1. 假设所有补全数据都来自数据库表（且无需通过表关联获取），如果不满足，则应该通过由另外的模块使其满足（宽表等方式）
+> 1. 假设补全数据来自数据库表时，无需通过表关联获取；如果不满足，则应该通过由另外的模块使其满足（宽表等方式）
 
 #### 智能查询语法使用
 

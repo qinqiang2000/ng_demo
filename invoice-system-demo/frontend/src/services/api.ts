@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// 直接调用Python后端，绕过代理问题
+const API_BASE_URL = 'http://localhost:8000/api';
 
 export const invoiceService = {
   // 统一发票处理 - JSON格式（支持单张和批量）
@@ -11,7 +12,12 @@ export const invoiceService = {
     merge_strategy?: string;
     merge_config?: any;
   }) => {
-    return axios.post(`${API_BASE_URL}/invoice/process`, data);
+    // 适配Python后端的请求格式
+    const pythonRequest = {
+      kdubl_xml: data.kdubl_xml || "",
+      source_system: data.source_system
+    };
+    return axios.post(`${API_BASE_URL}/invoice/process`, pythonRequest);
   },
 
   // 统一发票处理 - 文件上传（支持单张和批量）
@@ -120,11 +126,12 @@ export const invoiceService = {
 
   // 兼容性方法 - 单张发票处理（内部调用统一接口）
   processInvoice: (data: { kdubl_xml: string; source_system: string }) => {
-    return invoiceService.processInvoices({
+    // 适配Python后端格式
+    const pythonRequest = {
       kdubl_xml: data.kdubl_xml,
-      source_system: data.source_system,
-      merge_strategy: 'none'
-    });
+      source_system: data.source_system
+    };
+    return axios.post(`${API_BASE_URL}/invoice/process`, pythonRequest);
   },
 
   // 兼容性方法 - 批量发票处理（内部调用统一接口）

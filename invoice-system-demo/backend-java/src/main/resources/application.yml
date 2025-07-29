@@ -1,0 +1,148 @@
+spring:
+  application:
+    name: invoice-system-java
+  
+  # 数据库配置
+  datasource:
+    url: jdbc:sqlite:../shared/database/invoice_system.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  # JPA/Hibernate 配置
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: false
+        jdbc:
+          batch_size: 20
+        connection:
+          handling_mode: delayed_acquisition_and_release_after_transaction
+
+  # Jackson 配置
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd
+    serialization:
+      write-dates-as-timestamps: false
+      indent-output: true
+    deserialization:
+      fail-on-unknown-properties: false
+
+  # Web 配置
+  web:
+    cors:
+      allowed-origins: 
+        - "http://localhost:3000"
+        - "http://127.0.0.1:3000"
+      allowed-methods: 
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowed-headers: 
+        - "Content-Type"
+        - "Authorization"
+        - "X-Requested-With"
+        - "Accept"
+        - "Origin"
+        - "Access-Control-Request-Method"
+        - "Access-Control-Request-Headers"
+      allow-credentials: false
+
+# 服务器配置
+server:
+  port: 8000
+
+# Actuator 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,env,configprops
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+    info:
+      enabled: true
+    metrics:
+      enabled: true
+  health:
+    db:
+      enabled: true
+    diskspace:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+  metrics:
+    tags:
+      application: invoice-system-java
+      version: 1.0.0
+    export:
+      prometheus:
+        enabled: true
+
+# SpringDoc OpenAPI 配置
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    show-extensions: true
+    show-common-extensions: true
+  show-actuator: true
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
+# 日志配置
+logging:
+  level:
+    com.invoice: DEBUG
+    org.springframework.web: INFO
+    org.springframework.boot.actuate: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+
+# 自定义配置
+invoice-system:
+  # 共享配置文件路径
+  rules-config-path: ../shared/config/rules.yaml
+  # 共享数据目录
+  data-directory: ../shared/data
+  # CEL 表达式配置
+  cel:
+    enable-custom-functions: true
+    max-expression-length: 1000
+  # 处理配置
+  processing:
+    max-invoice-items: 1000
+    default-currency: CNY
+    timeout-seconds: 30

@@ -44,6 +44,33 @@ python3 -m uvicorn app.main:app --reload --port 8000
 
 **IMPORTANT**: Always use the virtual environment at `invoice-system-demo/backend/.venv` - do NOT install packages globally!
 
+### Backend (Java) - Hot Reload Enabled 🔥
+```bash
+cd backend-java
+mvn spring-boot:run -Dspring-boot.run.profiles=dev -Dspring-boot.run.fork=true
+
+# Or use the improved startup script:
+../scripts/start-java.sh
+```
+
+**Hot Reload Features:**
+- ✅ **自动重启**: 修改Java代码后2-3秒自动重启
+- ✅ **快速重启**: 使用DevTools，重启时间 < 1秒
+- ✅ **LiveReload**: 支持浏览器自动刷新 (端口35729)
+- ✅ **配置文件**: `application-dev.yml` 开发环境优化配置
+
+**热重载工作原理:**
+1. Spring Boot DevTools监控classpath变化
+2. 检测到.java文件修改后自动编译
+3. 应用程序快速重启 (保持数据库连接)
+4. 支持手动触发: `touch src/main/resources/.reloadtrigger`
+
+**测试热重载:**
+```bash
+# 测试热重载功能是否正常
+curl http://localhost:8000/api/health/hotreload-test
+```
+
 ### Frontend (React)
 ```bash
 cd frontend  

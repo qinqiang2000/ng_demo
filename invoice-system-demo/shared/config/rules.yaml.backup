@@ -1,0 +1,213 @@
+field_completion_rules:
+- active: true
+  apply_to: ''
+  id: completion_001
+  priority: 100
+  rule_expression: '''CN'''
+  rule_name: 设置默认国家
+  target_field: invoice.country
+- active: true
+  apply_to: invoice.supplier.tax_no == null
+  id: completion_002
+  priority: 100
+  rule_expression: db.companies.tax_number[name=invoice.supplier.name]
+  rule_name: 从DB补全供应商税号
+  target_field: invoice.supplier.tax_no
+- active: true
+  apply_to: invoice.customer.tax_no == null
+  id: completion_003
+  priority: 100
+  rule_expression: db.companies.tax_number[name=invoice.customer.name]
+  rule_name: 从DB补全客户税号
+  target_field: invoice.customer.tax_no
+- active: true
+  apply_to: '!has(invoice.extensions.supplier_category)'
+  id: completion_004a
+  priority: 99
+  rule_expression: db.companies.category[name=invoice.supplier.name]
+  rule_name: 从DB获取供应商分类
+  target_field: invoice.extensions.supplier_category
+- active: true
+  apply_to: invoice.total_amount > 0 && has(invoice.extensions.supplier_category)
+  id: completion_004b
+  priority: 80
+  rule_expression: invoice.total_amount * db.tax_rates.rate[category=invoice.extensions.supplier_category,
+    min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]
+  rule_name: 智能税率计算
+  target_field: invoice.tax_amount
+- active: true
+  apply_to: invoice.total_amount > 0 && !has(invoice.tax_amount)
+  id: completion_004c
+  priority: 75
+  rule_expression: invoice.total_amount * 0.06
+  rule_name: 备用税率计算
+  target_field: invoice.tax_amount
+- active: true
+  apply_to: ''
+  id: completion_005
+  priority: 70
+  rule_expression: invoice.total_amount - invoice.tax_amount
+  rule_name: 计算净额
+  target_field: invoice.net_amount
+- active: true
+  apply_to: invoice.total_amount > 1000 && invoice.items.size() > 5
+  id: completion_007
+  priority: 55
+  rule_expression: '''BULK_ORDER'''
+  rule_name: 发票类型自动识别
+  target_field: invoice.extensions.invoice_type
+- active: true
+  apply_to: has(invoice.extensions.supplier_category)
+  id: completion_008
+  priority: 50
+  rule_expression: db.tax_rates.rate[category=invoice.extensions.supplier_category,
+    min_amount<=invoice.total_amount, max_amount>=invoice.total_amount]
+  rule_name: 动态税率查询
+  target_field: invoice.extensions.dynamic_tax_rate
+- active: false
+  apply_to: invoice.items.size() > 0
+  id: completion_009
+  priority: 45
+  rule_expression: invoice.items.map(item, double(item.quantity)).reduce(sum, sum
+    + _)
+  rule_name: 计算商品总数量
+  target_field: invoice.extensions.total_quantity
+- active: true
+  apply_to: item.name == null || item.name == ''
+  id: completion_item_001
+  priority: 95
+  rule_expression: get_standard_name(item.description)
+  rule_name: 补全商品标准名称
+  target_field: items[].name
+- active: true
+  apply_to: item.tax_rate == null
+  id: completion_item_002
+  priority: 94
+  rule_expression: get_tax_rate(item.description)
+  rule_name: 补全商品税率
+  target_field: items[].tax_rate
+- active: true
+  apply_to: item.tax_category == null || item.tax_category == ''
+  id: completion_item_003
+  priority: 93
+  rule_expression: get_tax_category(item.description)
+  rule_name: 补全商品税种
+  target_field: items[].tax_category
+- active: false
+  apply_to: has(item.tax_rate) && item.tax_rate > 0 && (!has(item.tax_amount) || item.tax_amount
+    == null)
+  id: completion_item_004
+  priority: 92
+  rule_expression: item.amount * item.tax_rate
+  rule_name: 计算商品税额
+  target_field: items[].tax_amount
+- active: true
+  apply_to: invoice.supplier.email == null
+  id: completion_b7e47b4c
+  priority: 100
+  rule_expression: db.companies.email[name=invoice.supplier.name]
+  rule_name: 从DB补全供应商Email
+  target_field: invoice.supplier.email
+- active: true
+  apply_to: '!has(invoice.customer.phone) || invoice.customer.phone == null || invoice.customer.phone
+    == '''''
+  id: completion_434caa81
+  priority: 90
+  rule_expression: db.companies.email[name=invoice.customer.name]
+  rule_name: 客户手机号为空时用邮箱补全
+  target_field: invoice.customer.phone
+field_validation_rules:
+- active: true
+  apply_to: ''
+  error_message: 发票号码不能为空
+  field_path: invoice.invoice_number
+  id: validation_001
+  priority: 100
+  rule_expression: has(invoice.invoice_number) && invoice.invoice_number != ''
+  rule_name: 发票号码必填
+- active: true
+  apply_to: ''
+  error_message: 供应商名称不能为空
+  field_path: invoice.supplier.name
+  id: validation_002
+  priority: 100
+  rule_expression: has(invoice.supplier.name) && invoice.supplier.name != ''
+  rule_name: 供应商名称必填
+- active: true
+  apply_to: ''
+  error_message: 发票总金额必须大于0
+  field_path: invoice.total_amount
+  id: validation_003
+  priority: 90
+  rule_expression: invoice.total_amount > 0
+  rule_name: 总金额必须大于0
+- active: true
+  apply_to: invoice.total_amount > 5000
+  error_message: 金额超过5000的发票，客户税号必填
+  field_path: invoice.customer.tax_no
+  id: validation_004
+  priority: 80
+  rule_expression: has(invoice.customer.tax_no) && invoice.customer.tax_no != ''
+  rule_name: 大额发票必须有税号
+- active: true
+  apply_to: has(invoice.extensions.supplier_category) && invoice.extensions.supplier_category
+    == 'TRAVEL_SERVICE'
+  error_message: 旅游服务发票项目描述不规范，应包含：住房、餐饮、交通等标准服务项目
+  field_path: invoice.items
+  id: validation_005
+  priority: 75
+  rule_expression: invoice.items.all(item, item.name.matches('^(住宿|住房|餐饮|早餐|晚餐|停车费|交通费).*'))
+  rule_name: 旅游服务发票项目校验
+- active: false
+  apply_to: has(invoice.extensions.invoice_type) && invoice.extensions.invoice_type
+    == 'BULK_ORDER' && has(invoice.tax_amount)
+  error_message: 批量订单税额异常，应在5%-13%范围内
+  field_path: invoice.tax_amount
+  id: validation_006
+  priority: 65
+  rule_expression: invoice.tax_amount >= invoice.total_amount * 0.05 && invoice.tax_amount
+    <= invoice.total_amount * 0.13
+  rule_name: 批量订单税额校验
+- active: true
+  apply_to: has(invoice.supplier.tax_no) && invoice.supplier.tax_no != '' && invoice.supplier.tax_no
+    != null
+  error_message: 供应商税号格式错误，应为15位数字+3位字母数字组合
+  field_path: invoice.supplier.tax_no
+  id: validation_007
+  priority: 85
+  rule_expression: invoice.supplier.tax_no.matches('^[0-9]{15}[A-Z0-9]{3}$')
+  rule_name: 供应商税号格式校验
+- active: false
+  apply_to: has(invoice.supplier.name) && invoice.supplier.name != ''
+  error_message: 供应商在系统数据库中不存在，请先在数据管理中添加该企业
+  field_path: invoice.supplier.name
+  id: validation_011
+  priority: 75
+  rule_expression: db.companies.tax_number[name=invoice.supplier.name] != null
+  rule_name: 验证供应商在数据库中存在
+- active: false
+  apply_to: ''
+  error_message: 发票总金额与项目金额汇总不一致
+  field_path: invoice.total_amount
+  id: validation_008
+  priority: 95
+  rule_expression: abs(invoice.total_amount - invoice.items.map(item, double(item.amount)).reduce(sum,
+    sum + _)) < 0.01
+  rule_name: 发票项目金额一致性校验
+- active: false
+  apply_to: has(invoice.customer.email) && invoice.customer.email != ''
+  error_message: 客户邮箱格式错误
+  field_path: invoice.customer.email
+  id: validation_009
+  priority: 70
+  rule_expression: invoice.customer.email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+  rule_name: 客户邮箱格式校验
+- active: false
+  apply_to: invoice.total_amount > 1000
+  error_message: 大额发票必须包含有效的项目明细：数量大于0，金额大于0，描述不为空
+  field_path: invoice.items
+  id: validation_010
+  priority: 60
+  rule_expression: invoice.items.size() >= 1 && invoice.items.all(item, item.amount
+    > 0 && item.quantity > 0 && item.description != '')
+  rule_name: 多条件复合校验
