@@ -268,18 +268,19 @@ class LLMService:
 """
 
         # 用户请求
+        newline = '\n'
         user_prompt = f"""
 ## 用户需求
 {request.description}
 
-{f"## 上下文信息\n{request.context}\n" if request.context else ""}
+{f"## 上下文信息{newline}{request.context}{newline}" if request.context else ""}
 
-{f"## 参考示例\n{chr(10).join(f'- {ex}' for ex in request.examples)}\n" if request.examples else ""}
+{f"## 参考示例{newline}{newline.join(f'- {ex}' for ex in request.examples)}{newline}" if request.examples else ""}
 
 请根据以上需求和系统上下文生成规则。
 """
 
-        return f"{system_prompt}\n\n{user_prompt}"
+        return f"{system_prompt}{newline}{newline}{user_prompt}"
     
     def _infer_target_field(self, description: str) -> Optional[str]:
         """从描述中推断目标字段"""

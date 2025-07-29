@@ -27,7 +27,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * KDUBL XML 转换器
@@ -153,6 +155,10 @@ public class KdublConverter {
             // 状态
             invoiceBuilder.status("processed");
             
+            // 扩展字段 - 解析自定义扩展元素
+            Map<String, Object> extensions = parseExtensions(xpath, document);
+            invoiceBuilder.extensions(extensions);
+            
             InvoiceDomainObject invoice = invoiceBuilder.build();
             log.info("KDUBL XML 解析完成，发票号: {}, 总金额: {}, 供应商: {}", 
                 invoice.getInvoiceNumber(), invoice.getTotalAmount(), 
@@ -246,6 +252,11 @@ public class KdublConverter {
                 for (InvoiceItem item : invoice.getItems()) {
                     appendInvoiceLineElement(document, invoiceElement, item);
                 }
+            }
+            
+            // 扩展字段 - 生成自定义扩展元素
+            if (invoice.getExtensions() != null && !invoice.getExtensions().isEmpty()) {
+                appendExtensionsElement(document, invoiceElement, invoice.getExtensions());
             }
             
             // 转换为字符串
@@ -541,6 +552,100 @@ public class KdublConverter {
         } catch (Exception e) {
             log.warn("日期解析失败: {}", dateStr, e);
             return null;
+        }
+    }
+    
+    /**
+     * 解析扩展字段
+     * 从XML中提取自定义扩展元素到Map中
+     */
+    private Map<String, Object> parseExtensions(XPath xpath, Document document) {
+        Map<String, Object> extensions = new HashMap<>();
+        
+        try {
+            // 解析扩展字段容器
+            NodeList extensionNodes = (NodeList) xpath.evaluate("//cac:AdditionalDocumentReference", document, XPathConstants.NODESET);
+            
+            for (int i = 0; i < extensionNodes.getLength(); i++) {
+                Node extensionNode = extensionNodes.item(i);
+                
+                // 获取扩展字段的ID作为key
+                String extensionId = getTextContent(xpath, extensionNode, ".//cbc:ID");
+                // 获取扩展字段的值
+                String extensionValue = getTextContent(xpath, extensionNode, ".//cbc:DocumentDescription");
+                
+                if (extensionId != null && !extensionId.isEmpty()) {
+                    // 尝试解析为数字类型
+                    if (extensionValue != null && extensionValue.matches("^\\d+(\\.\\d+)?$")) {
+                        try {
+                            if (extensionValue.contains(".")) {
+                                extensions.put(extensionId, new BigDecimal(extensionValue));
+                            } else {
+                                extensions.put(extensionId, Integer.parseInt(extensionValue));
+                            }
+                        } catch (NumberFormatException e) {
+                            extensions.put(extensionId, extensionValue);
+                        }
+                    } else {
+                        extensions.put(extensionId, extensionValue);
+                    }
+                }
+            }
+            
+            // 解析其他常见的扩展字段
+            String supplierCategory = getTextContent(xpath, document, "//cac:AccountingSupplierParty//cbc:IndustryClassificationCode");
+            if (supplierCategory != null && !supplierCategory.isEmpty()) {
+                extensions.put("supplier_category", supplierCategory);
+            }
+            
+            String invoiceCategory = getTextContent(xpath, document, "//cbc:InvoiceTypeCode/@name");
+            if (invoiceCategory != null && !invoiceCategory.isEmpty()) {
+                extensions.put("invoice_category", invoiceCategory);
+            }
+            
+            log.debug("解析到 {} 个扩展字段", extensions.size());
+            
+        } catch (Exception e) {
+            log.warn("解析扩展字段时出错", e);
+        }
+        
+        return extensions;
+    }
+    
+    /**
+     * 生成扩展字段XML元素
+     * 将Map中的扩展字段转换为XML元素
+     */
+    private void appendExtensionsElement(Document document, Element parentElement, Map<String, Object> extensions) {
+        try {
+            for (Map.Entry<String, Object> entry : extensions.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                
+                if (value == null) {
+                    continue;
+                }
+                
+                // 创建AdditionalDocumentReference元素来存储扩展字段
+                Element extensionElement = document.createElementNS(CAC_NAMESPACE, "cac:AdditionalDocumentReference");
+                
+                // 扩展字段的ID
+                appendTextElement(document, extensionElement, "cbc:ID", key);
+                
+                // 扩展字段的值
+                appendTextElement(document, extensionElement, "cbc:DocumentDescription", value.toString());
+                
+                // 扩展字段的类型信息
+                String valueType = value.getClass().getSimpleName();
+                appendTextElement(document, extensionElement, "cbc:DocumentTypeCode", valueType);
+                
+                parentElement.appendChild(extensionElement);
+            }
+            
+            log.debug("生成了 {} 个扩展字段XML元素", extensions.size());
+            
+        } catch (Exception e) {
+            log.warn("生成扩展字段XML时出错", e);
         }
     }
 }
