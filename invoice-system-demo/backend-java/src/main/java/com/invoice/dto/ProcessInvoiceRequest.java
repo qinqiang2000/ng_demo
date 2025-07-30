@@ -65,6 +65,16 @@ public class ProcessInvoiceRequest {
     private String connectorType;
 
     /**
+     * 规则引擎类型
+     * 
+     * 可选值：cel, spel
+     * 默认使用 cel 规则引擎
+     */
+    @JsonProperty("rule_engine")
+    @Pattern(regexp = "^(cel|spel)$", message = "规则引擎类型必须是 cel 或 spel")
+    private String ruleEngine;
+
+    /**
      * 处理选项
      * 
      * 额外的处理配置参数
@@ -296,5 +306,32 @@ public class ProcessInvoiceRequest {
      */
     public boolean hasEmptyData() {
         return data == null || data.trim().isEmpty();
+    }
+
+    /**
+     * 获取规则引擎类型
+     * 
+     * @return 规则引擎类型，默认为 cel
+     */
+    public String getRuleEngine() {
+        return ruleEngine != null ? ruleEngine : "cel";
+    }
+
+    /**
+     * 检查是否使用 SpEL 规则引擎
+     * 
+     * @return 是否使用 SpEL 规则引擎
+     */
+    public boolean isSpelRuleEngine() {
+        return "spel".equalsIgnoreCase(getRuleEngine());
+    }
+
+    /**
+     * 检查是否使用 CEL 规则引擎
+     * 
+     * @return 是否使用 CEL 规则引擎
+     */
+    public boolean isCelRuleEngine() {
+        return "cel".equalsIgnoreCase(getRuleEngine());
     }
 }

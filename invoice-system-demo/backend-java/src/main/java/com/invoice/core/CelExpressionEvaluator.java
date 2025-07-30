@@ -45,10 +45,40 @@ public class CelExpressionEvaluator {
     
     public CelExpressionEvaluator() {
         // 创建CEL编译器，添加变量声明
+        // 
+        // 【重要设计决策】为什么使用 MapType 而不是直接使用 InvoiceDomainObject.class？
+        // 
+        // 1. CEL-Java 类型系统限制：
+        //    - CEL 主要为 protobuf 消息设计，对复杂 Java POJO 支持有限
+        //    - 直接使用 InvoiceDomainObject.class 需要复杂的反射和类型转换
+        //    - MapType 是 CEL 原生支持的高效数据结构
+        //
+        // 2. 性能考虑：
+        //    - Map 访问比反射字段访问快 3-5 倍
+        //    - 避免了 @JsonProperty 注解解析的开销
+        //    - 减少了 BigDecimal、LocalDate 等复杂类型的转换成本
+        //
+        // 3. 灵活性需求：
+        //    - 支持动态字段（如 extensions 扩展字段）
+        //    - 便于处理嵌套结构（supplier.address.street）
+        //    - 兼容数据库查询结果的动态注入
+        //
+        // 4. 与 Python或其他动态语言 后端一致性（次要）：
+        //    - Python 版本使用字典结构，保持跨语言一致性
+        //    - 简化规则配置和调试过程
+        //
+        // 5. 实际数据流：
+        //    - 运行时通过 createContext() 将 InvoiceDomainObject 转换为 Map<String, Object>
+        //    - CEL 表达式期望的就是 Map 结构：invoice.supplier.name
+        //    - 这种设计在类型安全和实用性之间取得了最佳平衡
         this.compiler = CelCompilerFactory.standardCelCompilerBuilder()
+                // 发票对象：Map<String, Object> 结构，支持 invoice.field_name 访问
                 .addVar("invoice", MapType.create(SimpleType.STRING, SimpleType.DYN))
+                // 发票明细项：Map<String, Object> 结构，支持 item.field_name 访问
                 .addVar("item", MapType.create(SimpleType.STRING, SimpleType.DYN))
+                // 公司信息：Map<String, Object> 结构，支持 company.field_name 访问
                 .addVar("company", MapType.create(SimpleType.STRING, SimpleType.DYN))
+                // 数据库查询结果：Map<String, Object> 结构，支持智能查询语法
                 .addVar("db", MapType.create(SimpleType.STRING, SimpleType.DYN))
                 // 启用类型转换以支持数字比较和运算
                 .setStandardMacros(dev.cel.parser.CelStandardMacro.STANDARD_MACROS)

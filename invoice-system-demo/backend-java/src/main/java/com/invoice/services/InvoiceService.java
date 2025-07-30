@@ -9,6 +9,7 @@ import com.invoice.dto.ProcessInvoiceRequest;
 import com.invoice.dto.ProcessInvoiceResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,10 @@ public class InvoiceService {
     private final RuleEngine ruleEngine;
     private final SmartQuerySystem smartQuerySystem;
     private final SimpleExpressionEvaluator expressionEvaluator;
+    
+    // SpEL 规则引擎（可选）
+    @Autowired(required = false)
+    private com.invoice.spel.SpelRuleEngine spelRuleEngine;
 
     /**
      * 获取规则引擎实例（用于访问执行日志）
@@ -64,24 +69,41 @@ public class InvoiceService {
             }
             
             // 2. 字段补全
-            log.info("=== InvoiceService: 准备调用 ruleEngine.completeFields() ===");
+            log.info("=== InvoiceService: 准备调用规则引擎进行字段补全 ===");
             log.info("传入发票对象: {}", invoice != null ? "非空" : "空");
+            log.info("规则引擎类型: {}", request.getRuleEngine());
             if (invoice != null) {
                 log.info("发票号: {}", invoice.getInvoiceNumber());
             }
             
-            log.info("*** 即将调用 ruleEngine.completeFields() ***");
-            InvoiceDomainObject completedInvoice = ruleEngine.completeFields(invoice);
-            log.info("*** ruleEngine.completeFields() 调用已返回 ***");
+            InvoiceDomainObject completedInvoice;
+            if (request.isSpelRuleEngine() && spelRuleEngine != null) {
+                log.info("*** 使用 SpEL 规则引擎进行字段补全 ***");
+                Map<String, Object> spelCompletionResult = spelRuleEngine.applyCompletionRules(invoice, new ArrayList<>());
+                log.info("SpEL 字段补全完成: {}", spelCompletionResult);
+                completedInvoice = invoice; // SpEL 引擎直接修改原对象
+            } else {
+                log.info("*** 使用 CEL 规则引擎进行字段补全 ***");
+                completedInvoice = ruleEngine.completeFields(invoice);
+            }
             
-            log.info("=== InvoiceService: ruleEngine.completeFields() 调用完成 ===");
+            log.info("=== InvoiceService: 规则引擎字段补全调用完成 ===");
             log.info("返回发票对象: {}", completedInvoice != null ? "非空" : "空");
             
             // 统计完成的字段数
             int fieldsCompleted = countCompletedFields(invoice, completedInvoice);
             
             // 3. 业务校验
-            RuleEngine.ValidationResult validationResult = ruleEngine.validateInvoice(completedInvoice);
+            RuleEngine.ValidationResult validationResult;
+            if (request.isSpelRuleEngine() && spelRuleEngine != null) {
+                log.info("*** 使用 SpEL 规则引擎进行业务校验 ***");
+                Map<String, Object> spelValidationResult = spelRuleEngine.applyValidationRules(completedInvoice, new ArrayList<>());
+                // 转换 SpEL 验证结果为标准格式
+                validationResult = convertSpelValidationResult(spelValidationResult);
+            } else {
+                log.info("*** 使用 CEL 规则引擎进行业务校验 ***");
+                validationResult = ruleEngine.validateInvoice(completedInvoice);
+            }
             
             // 4. 构建响应 - 转换 validation errors
             List<ProcessInvoiceResponse.ValidationError> validationErrors = validationResult.getErrors().stream()
@@ -381,5 +403,44 @@ public class InvoiceService {
             (completed.getNotes() != null && !completed.getNotes().isEmpty())) count++;
         
         return count;
+    }
+    
+    /**
+     * 转换SpEL验证结果为标准格式
+     */
+    private RuleEngine.ValidationResult convertSpelValidationResult(Map<String, Object> spelResult) {
+        RuleEngine.ValidationResult result = new RuleEngine.ValidationResult();
+        
+        // 提取验证状态
+        Boolean allValid = (Boolean) spelResult.get("all_valid");
+        result.setValid(allValid != null ? allValid : false);
+        
+        // 提取错误信息
+        List<String> errors = new ArrayList<>();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> ruleResults = (List<Map<String, Object>>) spelResult.get("rule_results");
+        if (ruleResults != null) {
+            for (Map<String, Object> ruleResult : ruleResults) {
+                Boolean valid = (Boolean) ruleResult.get("valid");
+                if (valid != null && !valid) {
+                    String message = (String) ruleResult.get("message");
+                    if (message != null) {
+                        errors.add(message);
+                    }
+                }
+            }
+        }
+        result.setErrors(errors);
+        
+        // 设置警告（SpEL引擎暂时没有警告，设为空列表）
+        result.setWarnings(new ArrayList<>());
+        
+        // 设置摘要
+        int totalRules = spelResult.get("total_rules") != null ? (Integer) spelResult.get("total_rules") : 0;
+        int validationRules = spelResult.get("validation_rules") != null ? (Integer) spelResult.get("validation_rules") : 0;
+        result.setSummary(String.format("SpEL验证完成 - 总规则: %d, 验证规则: %d, 结果: %s", 
+            totalRules, validationRules, allValid ? "通过" : "失败"));
+        
+        return result;
     }
 }

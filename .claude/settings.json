@@ -11,5 +11,36 @@
         ]
       }
     ]
+  },
+  "keybindings": {
+    "format_code": {
+      "key": "cmd+shift+f",
+      "description": "格式化当前文件代码",
+      "command": "format_current_file"
+    },
+    "format_java": {
+      "key": "cmd+alt+j",
+      "description": "格式化 Java 代码",
+      "command": "format_java_file"
+    },
+    "format_python": {
+      "key": "cmd+alt+p",
+      "description": "格式化 Python 代码", 
+      "command": "format_python_file"
+    }
+  },
+  "commands": {
+    "format_current_file": {
+      "type": "script",
+      "script": "#!/bin/bash\nfile_path=\"$1\"\nif [[ \"$file_path\" == *.java ]]; then\n  # Java 格式化 - 使用 google-java-format\n  if command -v google-java-format >/dev/null 2>&1; then\n    google-java-format --replace \"$file_path\"\n  else\n    echo \"请安装 google-java-format: brew install google-java-format\"\n  fi\nelif [[ \"$file_path\" == *.py ]]; then\n  # Python 格式化 - 使用 black\n  if command -v black >/dev/null 2>&1; then\n    black \"$file_path\"\n  else\n    echo \"请安装 black: pip install black\"\n  fi\nelif [[ \"$file_path\" == *.ts ]] || [[ \"$file_path\" == *.tsx ]] || [[ \"$file_path\" == *.js ]] || [[ \"$file_path\" == *.jsx ]]; then\n  # TypeScript/JavaScript 格式化\n  if command -v prettier >/dev/null 2>&1; then\n    prettier --write \"$file_path\"\n  else\n    echo \"请安装 prettier: npm install -g prettier\"\n  fi\nelse\n  echo \"不支持的文件类型: $file_path\"\nfi"
+    },
+    "format_java_file": {
+      "type": "script", 
+      "script": "#!/bin/bash\nfile_path=\"$1\"\nif [[ \"$file_path\" == *.java ]]; then\n  if command -v google-java-format >/dev/null 2>&1; then\n    google-java-format --replace \"$file_path\"\n    echo \"Java 文件已格式化: $file_path\"\n  else\n    echo \"请先安装 google-java-format:\"\n    echo \"brew install google-java-format\"\n  fi\nelse\n  echo \"当前文件不是 Java 文件\"\nfi"
+    },
+    "format_python_file": {
+      "type": "script",
+      "script": "#!/bin/bash\nfile_path=\"$1\"\nif [[ \"$file_path\" == *.py ]]; then\n  if command -v black >/dev/null 2>&1; then\n    black \"$file_path\"\n    echo \"Python 文件已格式化: $file_path\"\n  else\n    echo \"请先安装 black:\"\n    echo \"pip install black\"\n  fi\nelse\n  echo \"当前文件不是 Python 文件\"\nfi"
+    }
   }
 }

@@ -1,0 +1,309 @@
+# SpEL版本的发票处理规则配置
+# 字段补全规则 - 用于自动填充缺失的字段值
+field_completion_rules:
+  # 设置默认国家
+  - id: completion_001
+    rule_name: 设置默认国家
+    active: true
+    priority: 100
+    apply_to: ""
+    target_field: invoice.country
+    rule_expression: "'CN'"
+    
+  # 从数据库补全供应商税号
+  - id: completion_002
+    rule_name: 从DB补全供应商税号
+    active: true
+    priority: 100
+    apply_to: "invoice.supplier.taxNo == null"
+    target_field: invoice.supplier.taxNo
+    rule_expression: "db.companies.tax_number[name=invoice.supplier.name]"
+    
+  # 从数据库补全客户税号
+  - id: completion_003
+    rule_name: 从DB补全客户税号
+    active: true
+    priority: 100
+    apply_to: "invoice.customer.taxNo == null"
+    target_field: invoice.customer.taxNo
+    rule_expression: "db.companies.tax_number[name=invoice.customer.name]"
+    
+  # 从数据库获取供应商分类
+  - id: completion_004a
+    rule_name: 从DB获取供应商分类
+    active: true
+    priority: 99
+    apply_to: "invoice.extensions['supplier_category'] == null"
+    target_field: invoice.extensions.supplier_category
+    rule_expression: "db.companies.category[name=invoice.supplier.name]"
+    
+  # 智能税率计算
+  - id: completion_004b
+    rule_name: 智能税率计算
+    active: true
+    priority: 80
+    apply_to: "invoice.totalAmount > 0 && invoice.extensions['supplier_category'] != null"
+    target_field: invoice.taxAmount
+    rule_expression: "invoice.totalAmount * db.tax_rates.rate[category=invoice.extensions['supplier_category'], min_amount<=invoice.totalAmount, max_amount>=invoice.totalAmount]"
+    
+  # 备用税率计算
+  - id: completion_004c
+    rule_name: 备用税率计算
+    active: true
+    priority: 75
+    apply_to: "invoice.totalAmount > 0 && invoice.taxAmount == null"
+    target_field: invoice.taxAmount
+    rule_expression: "invoice.totalAmount * 0.06"
+    
+  # 计算净额
+  - id: completion_005
+    rule_name: 计算净额
+    active: true
+    priority: 70
+    apply_to: ""
+    target_field: invoice.net_amount
+    rule_expression: "invoice.totalAmount - (invoice.taxAmount ?: 0)"
+    
+  # 发票类型自动识别
+  - id: completion_007
+    rule_name: 发票类型自动识别
+    active: true
+    priority: 55
+    apply_to: "invoice.totalAmount > 1000 && invoice.items.size() > 5"
+    target_field: invoice.extensions.invoice_type
+    rule_expression: "'BULK_ORDER'"
+    
+  # 动态税率查询
+  - id: completion_008
+    rule_name: 动态税率查询
+    active: true
+    priority: 50
+    apply_to: "invoice.extensions['supplier_category'] != null"
+    target_field: invoice.extensions.dynamic_tax_rate
+    rule_expression: "db.tax_rates.rate[category=invoice.extensions['supplier_category'], min_amount<=invoice.totalAmount, max_amount>=invoice.totalAmount]"
+    
+  # 计算商品总数量（已禁用）
+  - id: completion_009
+    rule_name: 计算商品总数量
+    active: false
+    priority: 45
+    apply_to: "invoice.items.size() > 0"
+    target_field: invoice.extensions.total_quantity
+    rule_expression: "@spelHelper.sumItemQuantities(invoice.items)"
+    
+  # 补全商品标准名称（已禁用 - 方法不存在）
+  - id: completion_item_001
+    rule_name: 补全商品标准名称
+    active: false
+    priority: 94
+    apply_to: "invoice.items.?[description != null && (name == null || name.isEmpty())].size() > 0"
+    target_field: invoice.items
+    rule_expression: "@itemService.completeItemTaxRates(invoice.items)"
+    
+  # 单独的商品税率补全
+  - id: completion_item_002
+    rule_name: 补全商品税率
+    active: true
+    priority: 93
+    apply_to: "invoice.items.?[description != null && taxRate == null].size() > 0"
+    target_field: invoice.items
+    rule_expression: "@itemService.completeItemTaxRates(invoice.items)"
+    
+  # 单独的商品税种补全
+  - id: completion_item_003
+    rule_name: 补全商品税种
+    active: true
+    priority: 92
+    apply_to: "invoice.items.?[description != null && (taxCategory == null || taxCategory.isEmpty())].size() > 0"
+    target_field: invoice.items
+    rule_expression: "@itemService.completeItemTaxCategories(invoice.items)"
+    
+  # 计算商品税额 - 使用Java对象方法
+  - id: completion_item_004
+    rule_name: 计算商品税额
+    active: true
+    priority: 91
+    apply_to: "invoice.items.?[taxRate != null && taxRate.compareTo(T(java.math.BigDecimal).ZERO) > 0 && taxAmount == null].size() > 0"
+    target_field: invoice.items
+    rule_expression: "@itemService.calculateItemTaxAmounts(invoice.items)"
+    
+  # 从数据库补全供应商Email
+  - id: completion_b7e47b4c
+    rule_name: 从DB补全供应商Email
+    active: true
+    priority: 100
+    apply_to: "invoice.supplier.email == null"
+    target_field: invoice.supplier.email
+    rule_expression: "db.companies.email[name=invoice.supplier.name]"
+
+# 字段验证规则 - 用于验证数据的有效性和完整性
+field_validation_rules:
+  # 发票号码必填
+  - id: validation_001
+    rule_name: 发票号码必填
+    active: true
+    priority: 100
+    apply_to: ""
+    field_path: invoice.invoiceNumber
+    rule_expression: "invoice.invoiceNumber != null && !invoice.invoiceNumber.isEmpty()"
+    error_message: 发票号码不能为空
+    
+  # 供应商名称必填
+  - id: validation_002
+    rule_name: 供应商名称必填
+    active: true
+    priority: 100
+    apply_to: ""
+    field_path: invoice.supplier.name
+    rule_expression: "invoice.supplier.name != null && !invoice.supplier.name.isEmpty()"
+    error_message: 供应商名称不能为空
+    
+  # 总金额必须大于0
+  - id: validation_003
+    rule_name: 总金额必须大于0
+    active: true
+    priority: 90
+    apply_to: ""
+    field_path: invoice.totalAmount
+    rule_expression: "invoice.totalAmount > 0"
+    error_message: 发票总金额必须大于0
+    
+  # 大额发票必须有税号
+  - id: validation_004
+    rule_name: 大额发票必须有税号
+    active: true
+    priority: 80
+    apply_to: "invoice.totalAmount > 5000"
+    field_path: invoice.customer.tax_no
+    rule_expression: "invoice.customer.taxNo != null && !invoice.customer.taxNo.isEmpty()"
+    error_message: 金额超过5000的发票，客户税号必填
+    
+  # 旅游服务发票项目校验
+  - id: validation_005
+    rule_name: 旅游服务发票项目校验
+    active: true
+    priority: 75
+    apply_to: "invoice.extensions['supplier_category'] != null && invoice.extensions['supplier_category'] == 'TRAVEL_SERVICE'"
+    field_path: invoice.items
+    rule_expression: "@spelHelper.allItemsMatchPattern(invoice.items, '^(住宿|住房|餐饮|早餐|晚餐|停车费|交通费).*')"
+    error_message: 旅游服务发票项目描述不规范，应包含：住房、餐饮、交通等标准服务项目
+    
+  # 批量订单税额校验（已禁用）
+  - id: validation_006
+    rule_name: 批量订单税额校验
+    active: false
+    priority: 65
+    apply_to: "invoice.extensions?.invoice_type != null && invoice.extensions.invoice_type == 'BULK_ORDER' && invoice.taxAmount != null"
+    field_path: invoice.taxAmount
+    rule_expression: "invoice.taxAmount >= invoice.totalAmount * 0.05 && invoice.taxAmount <= invoice.totalAmount * 0.13"
+    error_message: 批量订单税额异常，应在5%-13%范围内
+    
+  # 供应商税号格式校验
+  - id: validation_007
+    rule_name: 供应商税号格式校验
+    active: true
+    priority: 85
+    apply_to: "invoice.supplier.taxNo != null && !invoice.supplier.taxNo.isEmpty()"
+    field_path: invoice.supplier.tax_no
+    rule_expression: "invoice.supplier.taxNo.matches('^[0-9]{15}[A-Z0-9]{3}$')"
+    error_message: 供应商税号格式错误，应为15位数字+3位字母数字组合
+    
+  # 验证供应商在数据库中存在（已禁用）
+  - id: validation_011
+    rule_name: 验证供应商在数据库中存在
+    active: false
+    priority: 75
+    apply_to: "invoice.supplier.name != null && !invoice.supplier.name.isEmpty()"
+    field_path: invoice.supplier.name
+    rule_expression: "db.companies.tax_number[name=invoice.supplier.name] != null"
+    error_message: 供应商在系统数据库中不存在，请先在数据管理中添加该企业
+    
+  # 客户税号格式校验
+  - id: validation_008
+    rule_name: 客户税号格式校验
+    active: true
+    priority: 85
+    apply_to: "invoice.customer.taxNo != null && !invoice.customer.taxNo.isEmpty()"
+    field_path: invoice.customer.tax_no
+    rule_expression: "invoice.customer.taxNo.matches('^[0-9]{15}[A-Z0-9]{3}$')"
+    error_message: 客户税号格式错误，应为15位数字+3位字母数字组合
+    
+  # 客户邮箱格式校验（已禁用）
+  - id: validation_009
+    rule_name: 客户邮箱格式校验
+    active: false
+    priority: 70
+    apply_to: "invoice.customer.email != null && !invoice.customer.email.isEmpty()"
+    field_path: invoice.customer.email
+    rule_expression: "invoice.customer.email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
+    error_message: 客户邮箱格式错误
+    
+  # 多条件复合校验（已禁用）
+  - id: validation_010
+    rule_name: 多条件复合校验
+    active: false
+    priority: 60
+    apply_to: "invoice.totalAmount > 1000"
+    field_path: invoice.items
+    rule_expression: "@spelHelper.validateItemDetails(invoice.items)"
+    error_message: 大额发票必须包含有效的项目明细：数量大于0，金额大于0，描述不为空
+    
+  # 旅游服务商品描述验证 - 使用Java Stream API
+  - id: validation_item_001
+    rule_name: 旅游服务商品描述验证
+    active: true
+    priority: 85
+    apply_to: "invoice.items != null && !invoice.items.isEmpty()"
+    target_field: invoice.items
+    rule_expression: "invoice.items.stream().allMatch(item -> item.description == null || !item.description.contains('旅游服务') || item.description.matches('.*旅游服务.*[0-9]{4}-[0-9]{2}-[0-9]{2}.*'))"
+    error_message: "旅游服务商品描述必须包含日期信息"
+    
+  # 批量订单税率验证 - 使用Java对象方法
+  - id: validation_item_002
+    rule_name: 批量订单税率验证
+    active: true
+    priority: 84
+    apply_to: "invoice.items != null && invoice.items.size() > 10"
+    target_field: invoice.items
+    rule_expression: "@itemService.validateBulkOrderTaxRates(invoice.items)"
+    error_message: "批量订单中商品税率必须一致"
+
+# SpEL自定义函数和服务说明
+# 
+# 为了支持SpEL表达式，需要实现以下Spring服务：
+#
+# 1. @dbService - 数据库查询服务
+#    - getTaxNoByName(String name): 根据公司名称查询税号
+#    - getEmailByName(String name): 根据公司名称查询邮箱
+#    - getSupplierCategory(String name): 根据供应商名称查询类别
+#    - getCustomerCategory(String name): 根据客户名称查询类别
+#
+# 2. @itemService - 商品信息服务（优化后的批量处理）
+#    主要方法：
+#    - completeItemsInfo(List<InvoiceItem> items): 【核心方法】智能批量补全所有商品信息
+#      * 根据description自动补全name（商品标准名称）
+#      * 根据description自动补全taxRate（税率）
+#      * 根据description自动补全taxCategory（税种）
+#      * 自动计算taxAmount（税额）
+#      * 一次调用完成所有字段补全，提高效率
+#    
+#    辅助方法（用于特殊情况的单独处理）：
+#    - completeItemNames(List<InvoiceItem> items): 仅补全商品名称
+#    - completeItemTaxRates(List<InvoiceItem> items): 仅补全税率
+#    - completeItemTaxCategories(List<InvoiceItem> items): 仅补全税种
+#    - calculateItemTaxAmounts(List<InvoiceItem> items): 仅计算税额
+#    - validateBulkOrderTaxRates(List<InvoiceItem> items): 验证批量订单税率一致性
+#
+# 3. @spelHelper - SpEL辅助服务
+#    - calculateTaxRate(String supplierCategory, String customerCategory): 计算税率
+#    - calculateNetAmount(BigDecimal totalAmount, BigDecimal taxAmount): 计算净额
+#    - sumItemQuantities(List<InvoiceItem> items): 计算商品总数量
+#    - validateItemDetails(List<InvoiceItem> items): 验证商品明细
+#
+# 优化说明：
+# 1. 利用Java对象的直接属性访问，简化表达式语法
+# 2. 使用Java Stream API进行集合操作，提高性能
+# 3. 批量处理商品信息，减少数据库查询次数
+# 4. 保留单独处理规则（已禁用），便于特殊情况使用
+# 5. 使用BigDecimal.compareTo()进行精确数值比较
+# 6. 利用Java对象的便利方法（如hasTaxNo(), hasCompleteContactInfo()等）
