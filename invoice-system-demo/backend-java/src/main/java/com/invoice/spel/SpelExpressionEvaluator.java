@@ -359,6 +359,11 @@ public class SpelExpressionEvaluator {
             // 根据条件返回不同的税率
             if (conditions.containsKey("category")) {
                 String category = (String) conditions.get("category");
+                // 添加null检查，避免NullPointerException
+                if (category == null) {
+                    log.warn("税率查询条件中的category为null，使用默认税率");
+                    return new BigDecimal("0.06"); // 默认税率6%
+                }
                 switch (category) {
                     case "TRAVEL_SERVICE":
                         return new BigDecimal("0.06");
@@ -426,7 +431,17 @@ public class SpelExpressionEvaluator {
             Map<String, Object> supplierMap = new HashMap<>();
             supplierMap.put("name", invoice.getSupplier().getName());
             supplierMap.put("tax_no", invoice.getSupplier().getTaxNo());
+            supplierMap.put("email", invoice.getSupplier().getEmail());
             invoiceMap.put("supplier", supplierMap);
+        }
+        
+        // 客户信息
+        if (invoice.getCustomer() != null) {
+            Map<String, Object> customerMap = new HashMap<>();
+            customerMap.put("name", invoice.getCustomer().getName());
+            customerMap.put("tax_no", invoice.getCustomer().getTaxNo());
+            customerMap.put("email", invoice.getCustomer().getEmail());
+            invoiceMap.put("customer", customerMap);
         }
         
         // 扩展字段

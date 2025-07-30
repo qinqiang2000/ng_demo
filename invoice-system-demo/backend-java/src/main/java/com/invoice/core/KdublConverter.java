@@ -293,9 +293,17 @@ public class KdublConverter {
             
             // 基本信息 - 支持多种UBL名称字段
             String name = getTextContent(xpath, document, partyPath + "/cbc:Name");
+            log.debug("尝试解析Party名称 - 路径1: {}, 结果: {}", partyPath + "/cbc:Name", name);
             if (name == null || name.isEmpty()) {
                 name = getTextContent(xpath, document, partyPath + "/cac:PartyName/cbc:Name");
+                log.debug("尝试解析Party名称 - 路径2: {}, 结果: {}", partyPath + "/cac:PartyName/cbc:Name", name);
             }
+            if (name == null || name.isEmpty()) {
+                // 尝试更多可能的路径
+                name = getTextContent(xpath, document, partyPath + "/../cbc:Name");
+                log.debug("尝试解析Party名称 - 路径3: {}, 结果: {}", partyPath + "/../cbc:Name", name);
+            }
+            log.debug("最终解析的Party名称: {}", name);
             partyBuilder.name(name);
             
             // 税号
