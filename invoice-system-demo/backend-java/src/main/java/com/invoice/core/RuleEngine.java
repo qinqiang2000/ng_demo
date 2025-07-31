@@ -2,6 +2,7 @@ package com.invoice.core;
 
 import com.invoice.domain.InvoiceDomainObject;
 import com.invoice.domain.Party;
+import com.invoice.spel.SpelFieldSetter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 public class RuleEngine {
 
     private final CelExpressionEvaluator expressionEvaluator;
+    private final SpelFieldSetter spelFieldSetter;
 
     private List<CompletionRule> completionRules = new ArrayList<>();
     private List<ValidationRule> validationRules = new ArrayList<>();
@@ -941,6 +943,7 @@ public class RuleEngine {
 
     /**
      * 设置字段值
+     * 使用 SpelFieldSetter 提供通用的、基于反射的字段设置功能，消除硬编码
      */
     private boolean setFieldValue(InvoiceDomainObject invoice, String fieldPath, Object value) {
         log.info("setFieldValue调用: fieldPath='{}', value='{}'", fieldPath, value);
@@ -950,80 +953,35 @@ public class RuleEngine {
         }
 
         try {
-            String[] pathParts = fieldPath.split("\\.");
-            log.info("字段路径解析: pathParts={}, length={}", Arrays.toString(pathParts), pathParts.length);
-
-            // 处理发票字段
-            if ("invoice".equals(pathParts[0]) && pathParts.length > 1) {
-                String fieldName = pathParts[1];
-
-                // 处理三级路径：invoice.supplier.xxx 和 invoice.customer.xxx
-                if (pathParts.length == 3) {
-                    if ("supplier".equals(fieldName)) {
-                        log.info("调用setSupplierField: fieldName='{}', value='{}'", pathParts[2], value);
-                        return setSupplierField(invoice, pathParts[2], value);
-                    } else if ("customer".equals(fieldName)) {
-                        log.info("调用setCustomerField: fieldName='{}', value='{}'", pathParts[2], value);
-                        return setCustomerField(invoice, pathParts[2], value);
-                    } else {
-                        log.warn("不支持的发票嵌套字段路径: {}", fieldPath);
-                        return false;
-                    }
-                }
-
-                // 处理二级路径：invoice.xxx
-                log.info("处理二级路径: fieldName='{}'", fieldName);
-                switch (fieldName) {
-                    case "tax_amount":
-                        if (value instanceof Number) {
-                            invoice.setTaxAmount(new BigDecimal(value.toString()));
-                            return true;
-                        }
-                        return false;
-                    case "currency":
-                        invoice.setCurrency(String.valueOf(value));
-                        return true;
-                    case "notes":
-                        invoice.setNotes(String.valueOf(value));
-                        return true;
-                    case "status":
-                        invoice.setStatus(String.valueOf(value));
-                        return true;
-                    case "country":
-                        invoice.setCountry(String.valueOf(value));
-                        log.info("设置发票国家: {}", value);
-                        return true;
-                    case "extensions":
-                        // 处理extensions字段，需要进一步解析路径
-                        if (pathParts.length == 3) {
-                            return setExtensionField(invoice, pathParts[2], value);
-                        }
-                        log.warn("extensions字段路径格式错误: {}", fieldPath);
-                        return false;
-                    default:
-                        log.warn("不支持的发票字段路径: {}", fieldPath);
-                        return false;
-                }
-            }
-            // 处理items[]数组字段
-            else if (fieldPath.startsWith("items[].")) {
+            // 处理items[]数组字段 - 这种特殊语法需要单独处理
+            if (fieldPath.startsWith("items[].")) {
                 log.info("处理items[]数组字段: {}", fieldPath);
                 return setItemsArrayField(invoice, fieldPath, value, "未知规则");
             }
-            // 处理供应商字段
-            else if ("supplier".equals(pathParts[0]) && pathParts.length > 1) {
-                log.info("处理二级路径: entityType='supplier', fieldName='{}'", pathParts[1]);
-                return setSupplierField(invoice, pathParts[1], value);
+            
+            // 转换字段路径：去掉 'invoice.' 前缀，因为 SpelFieldSetter 期望相对路径
+            String relativePath = fieldPath;
+            if (fieldPath.startsWith("invoice.")) {
+                relativePath = fieldPath.substring(8); // 去掉 "invoice." 前缀
+                log.debug("转换字段路径: {} -> {}", fieldPath, relativePath);
             }
-            // 处理客户字段
-            else if ("customer".equals(pathParts[0]) && pathParts.length > 1) {
-                log.info("处理二级路径: entityType='customer', fieldName='{}'", pathParts[1]);
-                return setCustomerField(invoice, pathParts[1], value);
+            
+            // 使用 SpelFieldSetter 处理所有其他字段路径
+            // SpelFieldSetter 支持:
+            // - 普通字段: taxAmount, currency 等
+            // - 嵌套对象字段: supplier.name, customer.address 等
+            // - Map字段: extensions.supplier_category 等
+            // - 投影表达式: items.![unitPrice] 等
+            boolean result = spelFieldSetter.setFieldValue(invoice, relativePath, value);
+            
+            if (result) {
+                log.debug("成功设置字段: {} = {}", fieldPath, value);
             } else {
-                log.warn("不支持的字段路径格式: {}", fieldPath);
-                return false;
+                log.warn("设置字段失败: {} = {}", fieldPath, value);
             }
-
+            
+            return result;
+            
         } catch (Exception e) {
             log.warn("设置字段值失败: {} = {}", fieldPath, value, e);
             return false;

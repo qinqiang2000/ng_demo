@@ -36,15 +36,66 @@ public class SpelFieldSetter {
         }
         
         try {
-            if (isProjectionExpression(fieldPath)) {
-                return setProjectionField(target, fieldPath, value);
+            // 转换字段路径中的下划线命名为驼峰命名
+            String normalizedFieldPath = normalizeFieldPath(fieldPath);
+            log.debug("字段路径标准化: {} -> {}", fieldPath, normalizedFieldPath);
+            
+            if (isProjectionExpression(normalizedFieldPath)) {
+                return setProjectionField(target, normalizedFieldPath, value);
             } else {
-                return setRegularField(target, fieldPath, value);
+                return setRegularField(target, normalizedFieldPath, value);
             }
         } catch (Exception e) {
             log.error("设置字段 {} 失败: {}", fieldPath, e.getMessage(), e);
             return false;
         }
+    }
+    
+    /**
+     * 标准化字段路径：将下划线命名转换为驼峰命名
+     * 例如：supplier.tax_no -> supplier.taxNo
+     */
+    private String normalizeFieldPath(String fieldPath) {
+        if (fieldPath == null || !fieldPath.contains("_")) {
+            return fieldPath;
+        }
+        
+        // 分割路径并转换每个部分
+        String[] parts = fieldPath.split("\\.");
+        StringBuilder result = new StringBuilder();
+        
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                result.append(".");
+            }
+            result.append(toCamelCase(parts[i]));
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * 将下划线命名转换为驼峰命名
+     * 例如：tax_no -> taxNo, company_type -> companyType
+     */
+    private String toCamelCase(String underscoreName) {
+        if (underscoreName == null || !underscoreName.contains("_")) {
+            return underscoreName;
+        }
+        
+        String[] parts = underscoreName.split("_");
+        StringBuilder camelCase = new StringBuilder(parts[0]);
+        
+        for (int i = 1; i < parts.length; i++) {
+            if (parts[i].length() > 0) {
+                camelCase.append(Character.toUpperCase(parts[i].charAt(0)));
+                if (parts[i].length() > 1) {
+                    camelCase.append(parts[i].substring(1));
+                }
+            }
+        }
+        
+        return camelCase.toString();
     }
     
     /**

@@ -5,15 +5,22 @@ import com.invoice.core.RuleEngine;
 import com.invoice.core.SmartQuerySystem;
 import com.invoice.core.SimpleExpressionEvaluator;
 import com.invoice.domain.InvoiceDomainObject;
+import com.invoice.domain.Party;
+import com.invoice.domain.Address;
 import com.invoice.dto.ProcessInvoiceRequest;
 import com.invoice.dto.ProcessInvoiceResponse;
 import com.invoice.config.RuleEngineConfigService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -379,9 +386,8 @@ public class InvoiceService {
                     return createPlaceholderInvoice(actualData);
                 
                 case "json":
-                    // TODO: 实现 JSON 解析逻辑
-                    log.warn("JSON 解析功能待实现");
-                    return createPlaceholderInvoice(actualData);
+                    log.info("开始解析 JSON 数据");
+                    return parseJsonToInvoice(actualData);
                 
                 default:
                     log.error("不支持的数据类型: {}", actualDataType);
@@ -390,6 +396,123 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("数据转换失败", e);
             return null;
+        }
+    }
+    
+    /**
+     * 解析JSON数据为发票对象
+     */
+    private InvoiceDomainObject parseJsonToInvoice(String jsonData) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(jsonData);
+            
+            log.debug("JSON解析开始，数据长度: {}", jsonData.length());
+            
+            InvoiceDomainObject.InvoiceDomainObjectBuilder builder = InvoiceDomainObject.builder();
+            
+            // 解析基本字段
+            if (rootNode.has("invoice_number")) {
+                builder.invoiceNumber(rootNode.get("invoice_number").asText());
+            } else {
+                builder.invoiceNumber("JSON-" + System.currentTimeMillis());
+            }
+            
+            if (rootNode.has("total_amount")) {
+                builder.totalAmount(new BigDecimal(rootNode.get("total_amount").asText()));
+            }
+            
+            if (rootNode.has("currency")) {
+                builder.currency(rootNode.get("currency").asText());
+            } else {
+                builder.currency("CNY");
+            }
+            
+            if (rootNode.has("issue_date")) {
+                try {
+                    builder.issueDate(LocalDate.parse(rootNode.get("issue_date").asText()));
+                } catch (Exception e) {
+                    log.warn("日期解析失败，使用当前日期: {}", e.getMessage());
+                    builder.issueDate(LocalDate.now());
+                }
+            } else {
+                builder.issueDate(LocalDate.now());
+            }
+            
+            // 解析供应商信息
+            if (rootNode.has("supplier")) {
+                JsonNode supplierNode = rootNode.get("supplier");
+                Party.PartyBuilder supplierBuilder = Party.builder();
+                
+                if (supplierNode.has("name")) {
+                    String supplierName = supplierNode.get("name").asText();
+                    supplierBuilder.name(supplierName);
+                    supplierBuilder.standardName(supplierName);
+                }
+                
+                if (supplierNode.has("tax_no")) {
+                    JsonNode taxNoNode = supplierNode.get("tax_no");
+                    if (!taxNoNode.isNull()) {
+                        supplierBuilder.taxNo(taxNoNode.asText());
+                    }
+                    // 如果tax_no为null，则不设置，这样completion_002规则就会触发
+                }
+                
+                if (supplierNode.has("address")) {
+                    String addressStr = supplierNode.get("address").asText();
+                    Address address = Address.builder()
+                            .street(addressStr)
+                            .build();
+                    supplierBuilder.address(address);
+                }
+                
+                builder.supplier(supplierBuilder.build());
+            }
+            
+            // 解析客户信息
+            if (rootNode.has("customer")) {
+                JsonNode customerNode = rootNode.get("customer");
+                Party.PartyBuilder customerBuilder = Party.builder();
+                
+                if (customerNode.has("name")) {
+                    String customerName = customerNode.get("name").asText();
+                    customerBuilder.name(customerName);
+                    customerBuilder.standardName(customerName);
+                }
+                
+                if (customerNode.has("tax_no")) {
+                    JsonNode taxNoNode = customerNode.get("tax_no");
+                    if (!taxNoNode.isNull()) {
+                        customerBuilder.taxNo(taxNoNode.asText());
+                    }
+                }
+                
+                if (customerNode.has("address")) {
+                    String addressStr = customerNode.get("address").asText();
+                    Address address = Address.builder()
+                            .street(addressStr)
+                            .build();
+                    customerBuilder.address(address);
+                }
+                
+                builder.customer(customerBuilder.build());
+            }
+            
+            // 设置其他默认字段
+            builder.status("DRAFT");
+            builder.notes("由JSON数据解析生成");
+            
+            InvoiceDomainObject invoice = builder.build();
+            log.info("JSON解析完成，发票号: {}, 供应商: {}, 供应商税号: {}", 
+                    invoice.getInvoiceNumber(), 
+                    invoice.getSupplier() != null ? invoice.getSupplier().getName() : "无",
+                    invoice.getSupplier() != null ? invoice.getSupplier().getTaxNo() : "无");
+            
+            return invoice;
+            
+        } catch (Exception e) {
+            log.error("JSON解析失败", e);
+            return createPlaceholderInvoice(jsonData);
         }
     }
     
