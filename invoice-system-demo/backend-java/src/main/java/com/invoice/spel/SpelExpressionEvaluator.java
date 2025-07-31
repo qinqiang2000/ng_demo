@@ -178,21 +178,24 @@ public class SpelExpressionEvaluator {
     }
 
     /**
-     * 创建变量上下文
+     * 创建变量上下文 - 优化版本，直接使用Bean对象
      */
     private Map<String, Object> createVariableContext(InvoiceDomainObject invoice, InvoiceItem item) {
         Map<String, Object> variables = new HashMap<>();
         
         if (invoice != null) {
-            Map<String, Object> invoiceMap = convertInvoiceToMap(invoice);
-            variables.put("invoice", invoiceMap);
+            // 直接使用Bean对象，SPEL可以直接访问getter方法
+            variables.put("invoice", invoice);
+            log.info("createVariableContext: 直接使用Bean对象，invoice.supplier: {}", 
+                invoice.getSupplier() != null ? invoice.getSupplier().getName() : "null");
         }
         
         if (item != null) {
-            Map<String, Object> itemMap = convertItemToMap(item);
-            variables.put("item", itemMap);
+            // 直接使用Bean对象
+            variables.put("item", item);
         }
         
+        log.info("createVariableContext: 最终variables包含的键: {}", variables.keySet());
         return variables;
     }
 
@@ -261,20 +264,84 @@ public class SpelExpressionEvaluator {
     }
 
     /**
-     * 获取嵌套变量值
+     * 获取嵌套变量值 - 优化版本，支持Bean对象和Map
      */
     private Object getNestedValue(Map<String, Object> variables, String path) {
+        log.debug("获取嵌套变量值: path={}, variables={}", path, variables.keySet());
+        
+        // 使用SPEL表达式来解析路径，这样可以直接访问Bean属性
+        try {
+            StandardEvaluationContext context = new StandardEvaluationContext();
+            
+            // 设置变量到SPEL上下文
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
+            }
+            
+            // 如果路径不以#开头，添加#前缀（SPEL变量引用语法）
+            String spelExpression = path.startsWith("#") ? path : "#" + path;
+            
+            // 如果路径不以已知的根变量开始，尝试添加 "invoice" 前缀
+            String[] parts = path.split("\\.");
+            if (parts.length > 0 && !variables.containsKey(parts[0])) {
+                log.debug("路径 {} 不以根变量开始，尝试添加 invoice 前缀", path);
+                if (variables.containsKey("invoice")) {
+                    spelExpression = "#invoice." + path;
+                }
+            }
+            
+            log.debug("使用SPEL表达式: {}", spelExpression);
+            
+            Expression expression = parser.parseExpression(spelExpression);
+            Object result = expression.getValue(context);
+            
+            log.debug("SPEL解析结果: {}", result);
+            return result;
+            
+        } catch (Exception e) {
+            log.debug("SPEL解析失败，回退到Map方式: {}", e.getMessage());
+            
+            // 回退到原来的Map方式（兼容性）
+            return getNestedValueFromMap(variables, path);
+        }
+    }
+    
+    /**
+     * 从Map中获取嵌套值（回退方法）
+     */
+    private Object getNestedValueFromMap(Map<String, Object> variables, String path) {
         String[] parts = path.split("\\.");
         Object current = variables;
         
+        // 如果路径不是以已知的根变量开始，尝试添加 "invoice" 前缀
+        if (parts.length > 0 && !variables.containsKey(parts[0])) {
+            log.debug("路径 {} 不以根变量开始，尝试添加 invoice 前缀", path);
+            if (variables.containsKey("invoice")) {
+                current = variables.get("invoice");
+                log.debug("使用 invoice 作为根对象: {}", current != null ? current.getClass().getSimpleName() : "null");
+            }
+        } else {
+            // 如果路径以根变量开始，先获取根变量
+            if (parts.length > 0 && variables.containsKey(parts[0])) {
+                current = variables.get(parts[0]);
+                log.debug("获取根变量 {}: {}", parts[0], current != null ? current.getClass().getSimpleName() : "null");
+                // 跳过第一个部分，因为已经处理了
+                parts = Arrays.copyOfRange(parts, 1, parts.length);
+            }
+        }
+        
         for (String part : parts) {
+            log.debug("处理路径部分: {}, 当前对象类型: {}", part, current != null ? current.getClass().getSimpleName() : "null");
             if (current instanceof Map) {
                 current = ((Map<?, ?>) current).get(part);
+                log.debug("从Map中获取值: key={}, value={}", part, current);
             } else {
+                log.debug("当前对象不是Map，返回null");
                 return null;
             }
         }
         
+        log.debug("最终获取的值: {}", current);
         return current;
     }
 
@@ -284,70 +351,27 @@ public class SpelExpressionEvaluator {
     private Object queryCompanyField(String fieldName, Map<String, Object> conditions) {
         try {
             // 使用DbService查询
-             if (dbService != null && conditions.containsKey("name")) {
-                 String companyName = (String) conditions.get("name");
-                 Object result = dbService.queryField("companies", fieldName, "name", companyName);
-                 log.info("数据库查询结果: field={}, company={}, result={}", fieldName, companyName, result);
-                 
-                 if (result != null && !result.toString().isEmpty()) {
-                     return result;
-                 }
+            if (dbService != null && conditions.containsKey("name")) {
+                String companyName = (String) conditions.get("name");
+                Object result = dbService.queryField("companies", fieldName, "name", companyName);
+                log.info("数据库查询结果: field={}, company={}, result={}", fieldName, companyName, result);
                 
-                log.info("数据库查询无结果，使用模拟查询");
+                if (result != null && !result.toString().isEmpty()) {
+                    return result;
+                }
+                
+                log.info("数据库查询无结果，返回默认值");
+            } else {
+                log.warn("DbService不可用或查询条件缺少name字段，返回默认值");
             }
             
-            // 模拟查询结果
-            return simulateCompanyQuery(fieldName, conditions);
+            // 直接返回默认值
+            return getDefaultValue(fieldName);
             
         } catch (Exception e) {
             log.error("公司查询失败: field={}, conditions={}", fieldName, conditions, e);
             return getDefaultValue(fieldName);
         }
-    }
-
-    /**
-     * 模拟公司查询
-     */
-    private Object simulateCompanyQuery(String fieldName, Map<String, Object> conditions) {
-        // 模拟数据
-        Map<String, Object> company1 = new HashMap<>();
-        company1.put("name", "测试供应商");
-        company1.put("tax_number", "123456789");
-        company1.put("category", "TRAVEL_SERVICE");
-        
-        Map<String, Object> company2 = new HashMap<>();
-        company2.put("name", "示例公司A");
-        company2.put("tax_number", "987654321");
-        company2.put("category", "GENERAL");
-        
-        List<Map<String, Object>> companies = List.of(company1, company2);
-        
-        log.info("模拟查询条件: {}", conditions);
-        
-        // 根据条件筛选
-        for (Map<String, Object> company : companies) {
-            boolean matches = true;
-            for (Map.Entry<String, Object> condition : conditions.entrySet()) {
-                Object companyValue = company.get(condition.getKey());
-                Object conditionValue = condition.getValue();
-                
-                log.info("比较: 公司{}={}, 条件{}={}", condition.getKey(), companyValue, condition.getKey(), conditionValue);
-                
-                if (!Objects.equals(companyValue, conditionValue)) {
-                    matches = false;
-                    break;
-                }
-            }
-            
-            if (matches) {
-                Object result = company.get(fieldName);
-                log.info("找到匹配公司，返回字段{}的值: {}", fieldName, result);
-                return result;
-            }
-        }
-        
-        log.info("未找到匹配的公司，返回默认值");
-        return getDefaultValue(fieldName);
     }
 
     /**
@@ -418,6 +442,9 @@ public class SpelExpressionEvaluator {
     private Map<String, Object> convertInvoiceToMap(InvoiceDomainObject invoice) {
         Map<String, Object> invoiceMap = new HashMap<>();
         
+        log.info("convertInvoiceToMap: 开始转换发票对象");
+        log.info("发票对象: {}", invoice != null ? "非空" : "空");
+        
         // 基本字段
         invoiceMap.put("invoice_number", invoice.getInvoiceNumber());
         invoiceMap.put("total_amount", invoice.getTotalAmount());
@@ -433,10 +460,15 @@ public class SpelExpressionEvaluator {
             supplierMap.put("tax_no", invoice.getSupplier().getTaxNo());
             supplierMap.put("email", invoice.getSupplier().getEmail());
             invoiceMap.put("supplier", supplierMap);
+        } else {
+            log.warn("供应商对象为空，跳过供应商信息转换");
         }
         
         // 客户信息
+        log.info("客户对象: {}", invoice.getCustomer() != null ? "非空" : "空");
         if (invoice.getCustomer() != null) {
+            log.info("客户名称: {}", invoice.getCustomer().getName());
+            
             Map<String, Object> customerMap = new HashMap<>();
             customerMap.put("name", invoice.getCustomer().getName());
             customerMap.put("tax_no", invoice.getCustomer().getTaxNo());
@@ -449,6 +481,7 @@ public class SpelExpressionEvaluator {
             invoiceMap.put("extensions", invoice.getExtensions());
         }
         
+        log.info("最终invoiceMap包含的键: {}", invoiceMap.keySet());
         return invoiceMap;
     }
 

@@ -7,6 +7,7 @@ import com.invoice.core.SimpleExpressionEvaluator;
 import com.invoice.domain.InvoiceDomainObject;
 import com.invoice.dto.ProcessInvoiceRequest;
 import com.invoice.dto.ProcessInvoiceResponse;
+import com.invoice.config.RuleEngineConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class InvoiceService {
     private final RuleEngine ruleEngine;
     private final SmartQuerySystem smartQuerySystem;
     private final SimpleExpressionEvaluator expressionEvaluator;
+    private final RuleEngineConfigService ruleEngineConfigService;
     
     // SpEL 规则引擎（可选）
     @Autowired(required = false)
@@ -48,6 +50,15 @@ public class InvoiceService {
     }
 
     /**
+     * 获取SpEL规则引擎实例（用于访问执行日志）
+     * 
+     * @return SpEL规则引擎实例
+     */
+    public com.invoice.spel.SpelRuleEngine getSpelRuleEngine() {
+        return spelRuleEngine;
+    }
+
+    /**
      * 处理发票
      * 
      * @param request 处理请求
@@ -60,6 +71,12 @@ public class InvoiceService {
         long startTime = System.currentTimeMillis();
         LocalDateTime processStartTime = LocalDateTime.now();
         
+        // 如果使用SpEL引擎，清空之前的执行日志
+        if (ruleEngineConfigService.isCurrentlySpel() && spelRuleEngine != null) {
+            log.info("清空SpEL引擎执行日志");
+            spelRuleEngine.clearExecutionLogs();
+        }
+        
         try {
             // 1. 数据转换（XML/Text -> Domain Object）
             InvoiceDomainObject invoice = convertInputToDomainObject(request);
@@ -71,13 +88,13 @@ public class InvoiceService {
             // 2. 字段补全
             log.info("=== InvoiceService: 准备调用规则引擎进行字段补全 ===");
             log.info("传入发票对象: {}", invoice != null ? "非空" : "空");
-            log.info("规则引擎类型: {}", request.getRuleEngine());
+            log.info("规则引擎类型: {}", ruleEngineConfigService.getCurrentEngine());
             if (invoice != null) {
                 log.info("发票号: {}", invoice.getInvoiceNumber());
             }
             
             InvoiceDomainObject completedInvoice;
-            if (request.isSpelRuleEngine() && spelRuleEngine != null) {
+            if (ruleEngineConfigService.isCurrentlySpel() && spelRuleEngine != null) {
                 log.info("*** 使用 SpEL 规则引擎进行字段补全 ***");
                 Map<String, Object> spelCompletionResult = spelRuleEngine.applyCompletionRules(invoice, new ArrayList<>());
                 log.info("SpEL 字段补全完成: {}", spelCompletionResult);
@@ -95,7 +112,7 @@ public class InvoiceService {
             
             // 3. 业务校验
             RuleEngine.ValidationResult validationResult;
-            if (request.isSpelRuleEngine() && spelRuleEngine != null) {
+            if (ruleEngineConfigService.isCurrentlySpel() && spelRuleEngine != null) {
                 log.info("*** 使用 SpEL 规则引擎进行业务校验 ***");
                 Map<String, Object> spelValidationResult = spelRuleEngine.applyValidationRules(completedInvoice, new ArrayList<>());
                 // 转换 SpEL 验证结果为标准格式

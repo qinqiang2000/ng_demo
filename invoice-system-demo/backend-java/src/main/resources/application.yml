@@ -98,8 +98,9 @@ management:
     tags:
       application: invoice-system-java
       version: 1.0.0
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 # SpringDoc OpenAPI 配置
@@ -137,8 +138,16 @@ invoice-system:
   rules-config-path: ../shared/config/rules.yaml
   # 共享数据目录
   data-directory: ../shared/data
+  # 规则引擎配置
+  rule-engine:
+    default: spel  # 默认使用的规则引擎：spel 或 cel
+    allow-runtime-switch: true  # 是否允许运行时切换引擎
   # CEL 表达式配置
   cel:
+    enable-custom-functions: true
+    max-expression-length: 1000
+  # SpEL 表达式配置
+  spel:
     enable-custom-functions: true
     max-expression-length: 1000
   # 处理配置

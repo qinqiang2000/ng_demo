@@ -4,6 +4,7 @@ import com.invoice.dto.ProcessInvoiceRequest;
 import com.invoice.domain.InvoiceDomainObject;
 import com.invoice.domain.InvoiceItem;
 import com.invoice.services.InvoiceService;
+import com.invoice.config.RuleEngineConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,6 +30,9 @@ public class InvoiceController {
     @Autowired
     @Qualifier("invoiceService")
     private InvoiceService invoiceService;
+    
+    @Autowired
+    private RuleEngineConfigService ruleEngineConfigService;
 
     /**
      * 处理发票数据
@@ -96,6 +100,7 @@ public class InvoiceController {
         pythonResponse.put("batch_id", "batch_" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + "_" + UUID.randomUUID().toString().substring(0, 8));
         pythonResponse.put("total_inputs", 1);
         pythonResponse.put("processing_time", String.format("%.2fs", (System.currentTimeMillis() - startTime) / 1000.0));
+        pythonResponse.put("rule_engine_used", ruleEngineConfigService.getCurrentEngine());
         
         // 错误信息
         List<String> errors = new ArrayList<>();
@@ -123,8 +128,18 @@ public class InvoiceController {
         pythonResponse.put("file_mapping", fileMapping);
         
         // 获取真实的completion_logs和validation_logs
-        List<Map<String, Object>> completionLogs = invoiceService.getRuleEngine().getCompletionExecutionLog();
-        List<Map<String, Object>> validationLogs = invoiceService.getRuleEngine().getValidationExecutionLog();
+        List<Map<String, Object>> completionLogs;
+        List<Map<String, Object>> validationLogs;
+        
+        if (ruleEngineConfigService.isCurrentlySpel()) {
+            // 使用SpEL引擎时，从SpEL引擎获取日志
+            completionLogs = invoiceService.getSpelRuleEngine().getCompletionExecutionLog();
+            validationLogs = invoiceService.getSpelRuleEngine().getValidationExecutionLog();
+        } else {
+            // 使用CEL引擎时，从CEL引擎获取日志
+            completionLogs = invoiceService.getRuleEngine().getCompletionExecutionLog();
+            validationLogs = invoiceService.getRuleEngine().getValidationExecutionLog();
+        }
         
         // 执行详情
         Map<String, Object> executionDetails = new HashMap<>();
@@ -316,6 +331,7 @@ public class InvoiceController {
         domainObject.put("tax_amount", invoice.getTaxAmount());
         domainObject.put("net_amount", invoice.getNetAmount());
         domainObject.put("currency", invoice.getCurrency());
+        domainObject.put("country", invoice.getCountry());
         domainObject.put("invoice_date", invoice.getIssueDate() != null ? invoice.getIssueDate().toString() : null);
         domainObject.put("status", invoice.getStatus());
         domainObject.put("due_date", invoice.getDueDate() != null ? invoice.getDueDate().toString() : null);
@@ -422,15 +438,19 @@ public class InvoiceController {
         domainObject.put("items", items);
         
         // 扩展字段（用于CEL表达式）
-        Map<String, Object> extensions = new HashMap<>();
+        // 首先使用发票对象中已有的扩展字段，如果没有则创建新的
+        Map<String, Object> extensions = invoice.getExtensions() != null ? 
+            new HashMap<>(invoice.getExtensions()) : new HashMap<>();
+        
+        // 补充其他扩展字段（如果尚未设置）
         if (invoice.getSupplier() != null && invoice.getSupplier().getIndustryClassification() != null) {
-            extensions.put("supplier_category", invoice.getSupplier().getIndustryClassification());
+            extensions.putIfAbsent("supplier_category", invoice.getSupplier().getIndustryClassification());
         }
         if (invoice.getInvoiceType() != null) {
-            extensions.put("invoice_type", invoice.getInvoiceType());
+            extensions.putIfAbsent("invoice_type", invoice.getInvoiceType());
         }
         if (invoice.getItems() != null) {
-            extensions.put("total_quantity", invoice.getItems().stream()
+            extensions.putIfAbsent("total_quantity", invoice.getItems().stream()
                 .filter(item -> item.getQuantity() != null)
                 .map(InvoiceItem::getQuantity)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
@@ -776,5 +796,122 @@ public class InvoiceController {
                 )
             );
         }
+    }
+
+    /**
+     * 使用指定规则引擎处理发票数据
+     * 
+     * 提供更灵活的规则引擎选择接口
+     * 
+     * @param ruleEngine 规则引擎类型 (spel 或 cel)
+     * @param request 发票处理请求
+     * @return 处理结果
+     */
+    @PostMapping("/process/{ruleEngine}")
+    public ResponseEntity<Map<String, Object>> processInvoiceWithEngine(
+            @PathVariable("ruleEngine") String ruleEngine,
+            @Valid @RequestBody ProcessInvoiceRequest request) {
+        
+        log.info("收到指定规则引擎的发票处理请求，引擎类型: {}, 数据类型: {}, 数据长度: {}", 
+                ruleEngine, request.getActualDataType(), request.getDataLength());
+        
+        // 验证规则引擎类型
+        if (!"spel".equalsIgnoreCase(ruleEngine) && !"cel".equalsIgnoreCase(ruleEngine)) {
+            return ResponseEntity.badRequest().body(
+                createPythonFormatErrorResponse("INVALID_RULE_ENGINE", 
+                    "规则引擎类型必须是 'spel' 或 'cel'，当前值: " + ruleEngine)
+            );
+        }
+        
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            // 验证请求数据
+            String actualData = request.getActualData();
+            if (actualData == null || actualData.trim().isEmpty()) {
+                log.warn("发票数据为空");
+                return ResponseEntity.badRequest().body(
+                    createPythonFormatErrorResponse("EMPTY_DATA", "发票数据不能为空")
+                );
+            }
+            
+            // 强制设置规则引擎类型
+            request.setRuleEngine(ruleEngine.toLowerCase());
+            
+            // 使用指定的规则引擎处理发票数据
+            log.debug("=== InvoiceController: 使用 {} 引擎处理发票 ===", ruleEngine);
+            com.invoice.dto.ProcessInvoiceResponse processingResult = invoiceService.processInvoice(request);
+            log.debug("=== InvoiceController: {} 引擎处理完成 ===", ruleEngine);
+            
+            // 转换为Python后端兼容的响应格式
+            Map<String, Object> pythonResponse = convertToCompatibleResponse(processingResult, request, startTime);
+            
+            // 在响应中添加使用的规则引擎信息
+            pythonResponse.put("rule_engine_used", ruleEngine.toLowerCase());
+            
+            log.info("发票处理完成，使用引擎: {}, 处理时间: {}ms, 返回 {} 个结果", 
+                    ruleEngine, System.currentTimeMillis() - startTime,
+                    ((List<?>) pythonResponse.get("results")).size());
+            
+            return ResponseEntity.ok(pythonResponse);
+            
+        } catch (Exception e) {
+            log.error("使用 {} 引擎处理发票失败", ruleEngine, e);
+            return ResponseEntity.badRequest().body(
+                createPythonFormatErrorResponse("PROCESSING_ERROR", 
+                    "使用 " + ruleEngine + " 引擎处理发票失败: " + e.getMessage())
+            );
+        }
+    }
+
+    /**
+     * 获取当前支持的规则引擎列表
+     * 
+     * @return 支持的规则引擎列表和相关信息
+     */
+    @GetMapping("/engines")
+    public ResponseEntity<Map<String, Object>> getSupportedEngines() {
+        
+        log.info("收到获取支持的规则引擎列表请求");
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        
+        // 支持的引擎列表
+        List<Map<String, Object>> engines = new ArrayList<>();
+        
+        // SpEL 引擎信息
+        Map<String, Object> spelEngine = new HashMap<>();
+        spelEngine.put("name", "spel");
+        spelEngine.put("display_name", "Spring Expression Language");
+        spelEngine.put("description", "基于Spring表达式语言的规则引擎，支持复杂的表达式计算");
+        spelEngine.put("is_default", true);
+        spelEngine.put("features", List.of(
+            "复杂表达式计算",
+            "丰富的内置函数",
+            "类型安全",
+            "详细的执行日志"
+        ));
+        engines.add(spelEngine);
+        
+        // CEL 引擎信息
+        Map<String, Object> celEngine = new HashMap<>();
+        celEngine.put("name", "cel");
+        celEngine.put("display_name", "Common Expression Language");
+        celEngine.put("description", "Google开发的通用表达式语言，性能优异");
+        celEngine.put("is_default", false);
+        celEngine.put("features", List.of(
+            "高性能执行",
+            "类型安全",
+            "简洁的语法",
+            "跨平台支持"
+        ));
+        engines.add(celEngine);
+        
+        response.put("engines", engines);
+        response.put("default_engine", "spel");
+        response.put("total_engines", engines.size());
+        
+        return ResponseEntity.ok(response);
     }
 }

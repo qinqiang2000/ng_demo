@@ -68,7 +68,7 @@ public class ProcessInvoiceRequest {
      * 规则引擎类型
      * 
      * 可选值：cel, spel
-     * 默认使用 cel 规则引擎
+     * 默认使用 spel 规则引擎
      */
     @JsonProperty("rule_engine")
     @Pattern(regexp = "^(cel|spel)$", message = "规则引擎类型必须是 cel 或 spel")
@@ -311,10 +311,10 @@ public class ProcessInvoiceRequest {
     /**
      * 获取规则引擎类型
      * 
-     * @return 规则引擎类型，默认为 cel
+     * @return 规则引擎类型，默认为 spel
      */
     public String getRuleEngine() {
-        return ruleEngine != null ? ruleEngine : "cel";
+        return ruleEngine != null ? ruleEngine : "spel";
     }
 
     /**

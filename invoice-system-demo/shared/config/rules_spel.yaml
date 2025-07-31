@@ -40,7 +40,7 @@ field_completion_rules:
   # 智能税率计算
   - id: completion_004b
     rule_name: 智能税率计算
-    active: true
+    active: false
     priority: 80
     apply_to: "invoice.totalAmount > 0 && invoice.extensions['supplier_category'] != null"
     target_field: invoice.taxAmount
@@ -49,7 +49,7 @@ field_completion_rules:
   # 备用税率计算
   - id: completion_004c
     rule_name: 备用税率计算
-    active: true
+    active: false
     priority: 75
     apply_to: "invoice.totalAmount > 0 && invoice.taxAmount == null"
     target_field: invoice.taxAmount
@@ -58,10 +58,10 @@ field_completion_rules:
   # 计算净额
   - id: completion_005
     rule_name: 计算净额
-    active: true
+    active: false
     priority: 70
     apply_to: ""
-    target_field: invoice.net_amount
+    target_field: invoice.netAmount
     rule_expression: "invoice.totalAmount - (invoice.taxAmount ?: 0)"
     
   # 发票类型自动识别
@@ -69,14 +69,14 @@ field_completion_rules:
     rule_name: 发票类型自动识别
     active: true
     priority: 55
-    apply_to: "invoice.totalAmount > 1000 && invoice.items.size() > 5"
+    apply_to: "invoice.totalAmount > 100 && invoice.items.size() >=1 "
     target_field: invoice.extensions.invoice_type
     rule_expression: "'BULK_ORDER'"
     
   # 动态税率查询
   - id: completion_008
     rule_name: 动态税率查询
-    active: true
+    active: false
     priority: 50
     apply_to: "invoice.extensions['supplier_category'] != null"
     target_field: invoice.extensions.dynamic_tax_rate
@@ -91,19 +91,19 @@ field_completion_rules:
     target_field: invoice.extensions.total_quantity
     rule_expression: "@spelHelper.sumItemQuantities(invoice.items)"
     
-  # 补全商品标准名称（已禁用 - 方法不存在）
+  # 补全商品标准名称 - 使用集合处理方法
   - id: completion_item_001
     rule_name: 补全商品标准名称
-    active: false
-    priority: 94
-    apply_to: "invoice.items.?[description != null && (name == null || name.isEmpty())].size() > 0"
-    target_field: invoice.items
-    rule_expression: "@itemService.completeItemTaxRates(invoice.items)"
+    active: true
+    priority: 95
+    apply_to: "invoice.items.?[description != null && name == null].size() > 0"
+    target_field: "invoice.items.![name]"
+    rule_expression: "@itemService.completeAllItemNames(invoice.items)"
     
   # 单独的商品税率补全
   - id: completion_item_002
     rule_name: 补全商品税率
-    active: true
+    active: false
     priority: 93
     apply_to: "invoice.items.?[description != null && taxRate == null].size() > 0"
     target_field: invoice.items
@@ -112,7 +112,7 @@ field_completion_rules:
   # 单独的商品税种补全
   - id: completion_item_003
     rule_name: 补全商品税种
-    active: true
+    active: false
     priority: 92
     apply_to: "invoice.items.?[description != null && (taxCategory == null || taxCategory.isEmpty())].size() > 0"
     target_field: invoice.items
@@ -121,7 +121,7 @@ field_completion_rules:
   # 计算商品税额 - 使用Java对象方法
   - id: completion_item_004
     rule_name: 计算商品税额
-    active: true
+    active: false
     priority: 91
     apply_to: "invoice.items.?[taxRate != null && taxRate.compareTo(T(java.math.BigDecimal).ZERO) > 0 && taxAmount == null].size() > 0"
     target_field: invoice.items
@@ -130,7 +130,7 @@ field_completion_rules:
   # 从数据库补全供应商Email
   - id: completion_b7e47b4c
     rule_name: 从DB补全供应商Email
-    active: true
+    active: false
     priority: 100
     apply_to: "invoice.supplier.email == null"
     target_field: invoice.supplier.email
@@ -174,7 +174,7 @@ field_validation_rules:
     active: true
     priority: 80
     apply_to: "invoice.totalAmount > 5000"
-    field_path: invoice.customer.tax_no
+    field_path: invoice.customer.taxNo
     rule_expression: "invoice.customer.taxNo != null && !invoice.customer.taxNo.isEmpty()"
     error_message: 金额超过5000的发票，客户税号必填
     
@@ -183,9 +183,9 @@ field_validation_rules:
     rule_name: 旅游服务发票项目校验
     active: true
     priority: 75
-    apply_to: "invoice.extensions['supplier_category'] != null && invoice.extensions['supplier_category'] == 'TRAVEL_SERVICE'"
+    apply_to: "invoice.extensions != null && invoice.extensions['supplier_category'] != null && invoice.extensions['supplier_category'] == 'TRAVEL_SERVICE'"
     field_path: invoice.items
-    rule_expression: "@spelHelper.allItemsMatchPattern(invoice.items, '^(住宿|住房|餐饮|早餐|晚餐|停车费|交通费).*')"
+    rule_expression: "invoice.items.?[name == null || !name.matches('^(住宿|住房|餐饮|早餐|晚餐|停车费|交通费).*')].isEmpty()"
     error_message: 旅游服务发票项目描述不规范，应包含：住房、餐饮、交通等标准服务项目
     
   # 批量订单税额校验（已禁用）
@@ -204,7 +204,7 @@ field_validation_rules:
     active: true
     priority: 85
     apply_to: "invoice.supplier.taxNo != null && !invoice.supplier.taxNo.isEmpty()"
-    field_path: invoice.supplier.tax_no
+    field_path: invoice.supplier.taxNo
     rule_expression: "invoice.supplier.taxNo.matches('^[0-9]{15}[A-Z0-9]{3}$')"
     error_message: 供应商税号格式错误，应为15位数字+3位字母数字组合
     
@@ -221,10 +221,10 @@ field_validation_rules:
   # 客户税号格式校验
   - id: validation_008
     rule_name: 客户税号格式校验
-    active: true
+    active: false
     priority: 85
     apply_to: "invoice.customer.taxNo != null && !invoice.customer.taxNo.isEmpty()"
-    field_path: invoice.customer.tax_no
+    field_path: invoice.customer.taxNo
     rule_expression: "invoice.customer.taxNo.matches('^[0-9]{15}[A-Z0-9]{3}$')"
     error_message: 客户税号格式错误，应为15位数字+3位字母数字组合
     
@@ -247,21 +247,11 @@ field_validation_rules:
     field_path: invoice.items
     rule_expression: "@spelHelper.validateItemDetails(invoice.items)"
     error_message: 大额发票必须包含有效的项目明细：数量大于0，金额大于0，描述不为空
-    
-  # 旅游服务商品描述验证 - 使用Java Stream API
-  - id: validation_item_001
-    rule_name: 旅游服务商品描述验证
-    active: true
-    priority: 85
-    apply_to: "invoice.items != null && !invoice.items.isEmpty()"
-    target_field: invoice.items
-    rule_expression: "invoice.items.stream().allMatch(item -> item.description == null || !item.description.contains('旅游服务') || item.description.matches('.*旅游服务.*[0-9]{4}-[0-9]{2}-[0-9]{2}.*'))"
-    error_message: "旅游服务商品描述必须包含日期信息"
-    
+        
   # 批量订单税率验证 - 使用Java对象方法
   - id: validation_item_002
     rule_name: 批量订单税率验证
-    active: true
+    active: false
     priority: 84
     apply_to: "invoice.items != null && invoice.items.size() > 10"
     target_field: invoice.items
