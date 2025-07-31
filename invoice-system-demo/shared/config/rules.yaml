@@ -41,7 +41,7 @@ field_completion_rules:
   target_field: invoice.tax_amount
 
 - active: true
-  apply_to: invoice.total_amount > 0 && !has(invoice.tax_amount)
+  apply_to: invoice.total_amount > 0.0 && !has(invoice.tax_amount)
   id: completion_004c
   priority: 75
   rule_expression: invoice.total_amount * 0.06
@@ -57,7 +57,7 @@ field_completion_rules:
   target_field: invoice.net_amount
 
 - active: true
-  apply_to: invoice.total_amount > 1000 && invoice.items.size() > 5
+  apply_to: invoice.total_amount > 100 && invoice.items.size() > 5
   id: completion_007
   priority: 55
   rule_expression: '''BULK_ORDER'''
@@ -147,11 +147,11 @@ field_validation_rules:
   field_path: invoice.total_amount
   id: validation_003
   priority: 90
-  rule_expression: invoice.total_amount > 0
+  rule_expression: invoice.total_amount > 0.0
   rule_name: 总金额必须大于0
 
 - active: true
-  apply_to: invoice.total_amount > 5000
+  apply_to: invoice.total_amount > 5000.0
   error_message: 金额超过5000的发票，客户税号必填
   field_path: invoice.customer.tax_no
   id: validation_004

@@ -71,6 +71,13 @@ public class InvoiceController {
             // 转换为Python后端兼容的响应格式
             Map<String, Object> pythonResponse = convertToCompatibleResponse(processingResult, request, startTime);
             
+            // 在返回报文前清除所有缓存，释放内存
+            if (ruleEngineConfigService.isCurrentlySpel()) {
+                invoiceService.getSpelRuleEngine().clearAllCaches();
+            } else {
+                invoiceService.getRuleEngine().clearAllCaches();
+            }
+            
             log.info("发票处理完成，处理时间: {}ms, 返回 {} 个结果", 
                     System.currentTimeMillis() - startTime,
                     ((List<?>) pythonResponse.get("results")).size());
@@ -784,6 +791,13 @@ public class InvoiceController {
         try {
             Map<String, Object> validationResult = invoiceService.validateInvoice(invoice);
             
+            // 在返回报文前清除所有缓存，释放内存
+            if (ruleEngineConfigService.isCurrentlySpel()) {
+                invoiceService.getSpelRuleEngine().clearAllCaches();
+            } else {
+                invoiceService.getRuleEngine().clearAllCaches();
+            }
+            
             log.info("发票验证完成，发票号: {}", invoice.getInvoiceNumber());
             return ResponseEntity.ok(validationResult);
             
@@ -848,6 +862,13 @@ public class InvoiceController {
             
             // 在响应中添加使用的规则引擎信息
             pythonResponse.put("rule_engine_used", ruleEngine.toLowerCase());
+            
+            // 在返回报文前清除所有缓存，释放内存
+            if ("spel".equalsIgnoreCase(ruleEngine)) {
+                invoiceService.getSpelRuleEngine().clearAllCaches();
+            } else {
+                invoiceService.getRuleEngine().clearAllCaches();
+            }
             
             log.info("发票处理完成，使用引擎: {}, 处理时间: {}ms, 返回 {} 个结果", 
                     ruleEngine, System.currentTimeMillis() - startTime,

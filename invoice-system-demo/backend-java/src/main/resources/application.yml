@@ -140,7 +140,7 @@ invoice-system:
   data-directory: ../shared/data
   # 规则引擎配置
   rule-engine:
-    default: spel  # 默认使用的规则引擎：spel 或 cel
+    default: cel  # 默认使用的规则引擎：spel 或 cel
     allow-runtime-switch: true  # 是否允许运行时切换引擎
   # CEL 表达式配置
   cel:

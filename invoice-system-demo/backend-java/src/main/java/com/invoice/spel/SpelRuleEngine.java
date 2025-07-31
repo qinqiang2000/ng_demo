@@ -1006,6 +1006,24 @@ public class SpelRuleEngine {
     }
     
     /**
+     * 清除所有缓存
+     * 
+     * 在返回响应前调用，释放内存
+     */
+    public void clearAllCaches() {
+        // 清除执行日志
+        completionExecutionLog.clear();
+        validationExecutionLog.clear();
+        
+        // 清除表达式评估器的缓存
+        if (spelEvaluator != null) {
+            spelEvaluator.clearCache();
+        }
+        
+        log.debug("SpEL规则引擎缓存已清除");
+    }
+    
+    /**
      * 验证 SpEL 表达式语法
      * 
      * @param expression SpEL 表达式

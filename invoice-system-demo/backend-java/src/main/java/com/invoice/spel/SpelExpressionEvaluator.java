@@ -523,4 +523,13 @@ public class SpelExpressionEvaluator {
         // 为简化实现，暂时返回空 Map
         return new HashMap<>();
     }
+    
+    /**
+     * 清除缓存（为了与CelExpressionEvaluator保持一致性）
+     * SpEL版本目前没有缓存机制，但提供此方法以保持接口一致
+     */
+    public void clearCache() {
+        log.debug("SpEL表达式求值器清除缓存（当前无缓存实现）");
+        // SpEL版本目前没有缓存，此方法为空实现
+    }
 }
