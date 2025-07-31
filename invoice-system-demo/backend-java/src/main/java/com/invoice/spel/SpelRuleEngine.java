@@ -14,8 +14,10 @@ import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
+import jakarta.annotation.PostConstruct;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -58,6 +60,19 @@ public class SpelRuleEngine {
     // 执行日志
     private List<Map<String, Object>> completionExecutionLog = new ArrayList<>();
     private List<Map<String, Object>> validationExecutionLog = new ArrayList<>();
+    
+    /**
+     * 应用启动时自动加载规则
+     */
+    @PostConstruct
+    public void initRules() {
+        try {
+            loadRules("../shared/config/rules_spel.yaml");
+            log.info("应用启动时自动加载规则成功");
+        } catch (Exception e) {
+            log.warn("应用启动时自动加载规则失败，将在首次使用时加载: {}", e.getMessage());
+        }
+    }
     
     /**
      * 判断目标字段是否为集合类型（需要逐个处理商品）
@@ -175,7 +190,6 @@ public class SpelRuleEngine {
                  this.completionRules = completionRulesConfig.stream()
                      .map(ruleConfig -> parseBusinessRule(ruleConfig, "completion"))
                      .filter(Objects::nonNull)
-                     .filter(rule -> rule.getIsActive())
                      .sorted(Comparator.comparingInt(BusinessRule::getPriority).reversed())
                      .collect(Collectors.toList());
                      
@@ -195,7 +209,6 @@ public class SpelRuleEngine {
                  this.validationRules = validationRulesConfig.stream()
                      .map(ruleConfig -> parseBusinessRule(ruleConfig, "validation"))
                      .filter(Objects::nonNull)
-                     .filter(rule -> rule.getIsActive())
                      .sorted(Comparator.comparingInt(BusinessRule::getPriority).reversed())
                      .collect(Collectors.toList());
                      
@@ -901,4 +914,160 @@ public class SpelRuleEngine {
     public List<BusinessRule> getValidationRules() {
         return new ArrayList<>(validationRules);
     }
+    
+    /**
+     * 根据规则 ID 查找规则
+     * 
+     * @param ruleId 规则 ID
+     * @return 规则对象，如果未找到则返回 null
+     */
+    public BusinessRule findRuleById(String ruleId) {
+        // 在补全规则中查找
+        for (BusinessRule rule : completionRules) {
+            if (ruleId.equals(rule.getRuleId())) {
+                return rule;
+            }
+        }
+        
+        // 在验证规则中查找
+        for (BusinessRule rule : validationRules) {
+            if (ruleId.equals(rule.getRuleId())) {
+                return rule;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 更新规则的激活状态
+     * 
+     * @param ruleId 规则 ID
+     * @param active 激活状态
+     * @return 是否更新成功
+     */
+    public boolean updateRuleActiveStatus(String ruleId, boolean active) {
+        BusinessRule rule = findRuleById(ruleId);
+        if (rule != null) {
+            rule.setIsActive(active);
+            log.info("更新规则 {} 的激活状态为: {}", ruleId, active);
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * 更新规则字段
+     * 
+     * @param ruleId 规则 ID
+     * @param updates 更新的字段映射
+     * @return 是否更新成功
+     */
+    public boolean updateRule(String ruleId, Map<String, Object> updates) {
+        BusinessRule rule = findRuleById(ruleId);
+        if (rule == null) {
+            return false;
+        }
+        
+        // 更新各个字段
+        if (updates.containsKey("ruleName")) {
+            rule.setRuleName((String) updates.get("ruleName"));
+        }
+        if (updates.containsKey("applyTo")) {
+            rule.setApplyTo((String) updates.get("applyTo"));
+        }
+        if (updates.containsKey("targetField")) {
+            rule.setTargetField((String) updates.get("targetField"));
+        }
+        if (updates.containsKey("fieldPath")) {
+            rule.setFieldPath((String) updates.get("fieldPath"));
+        }
+        if (updates.containsKey("ruleExpression")) {
+            rule.setRuleExpression((String) updates.get("ruleExpression"));
+        }
+        if (updates.containsKey("errorMessage")) {
+            rule.setErrorMessage((String) updates.get("errorMessage"));
+        }
+        if (updates.containsKey("priority")) {
+            Object priority = updates.get("priority");
+            if (priority instanceof Number) {
+                rule.setPriority(((Number) priority).intValue());
+            }
+        }
+        if (updates.containsKey("active")) {
+            Object active = updates.get("active");
+            if (active instanceof Boolean) {
+                rule.setIsActive((Boolean) active);
+            }
+        }
+        
+        log.info("更新规则 {} 的字段: {}", ruleId, updates.keySet());
+        return true;
+    }
+    
+    /**
+     * 验证 SpEL 表达式语法
+     * 
+     * @param expression SpEL 表达式
+     * @return 验证结果
+     */
+    public Map<String, Object> validateExpression(String expression) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            if (expression == null || expression.trim().isEmpty()) {
+                result.put("valid", false);
+                result.put("message", "表达式不能为空");
+                return result;
+            }
+            
+            // 尝试解析 SpEL 表达式
+            Expression spelExpression = spelExpressionParser.parseExpression(expression.trim());
+            
+            // 创建一个测试用的发票对象来验证表达式
+            InvoiceDomainObject testInvoice = createTestInvoice();
+            
+            // 尝试评估表达式（不关心结果，只关心是否能成功解析和执行）
+            try {
+                Object evaluationResult = spelExpression.getValue(testInvoice);
+                result.put("valid", true);
+                result.put("message", "表达式语法正确");
+                result.put("evaluation_type", evaluationResult != null ? evaluationResult.getClass().getSimpleName() : "null");
+            } catch (Exception evalException) {
+                // 表达式语法正确但执行时出错（可能是因为测试数据不完整）
+                result.put("valid", true);
+                result.put("message", "表达式语法正确（执行时可能需要完整的数据上下文）");
+                result.put("execution_note", evalException.getMessage());
+            }
+            
+        } catch (Exception parseException) {
+            result.put("valid", false);
+            result.put("message", "表达式语法错误: " + parseException.getMessage());
+        }
+        
+        return result;
+    }
+    
+    /**
+      * 创建测试用的发票对象
+      */
+     private InvoiceDomainObject createTestInvoice() {
+         InvoiceDomainObject testInvoice = new InvoiceDomainObject();
+         testInvoice.setInvoiceNumber("TEST-001");
+         testInvoice.setTotalAmount(new BigDecimal("1000.0"));
+         testInvoice.setCurrency("CNY");
+         
+         // 创建测试商品
+         InvoiceItem testItem = new InvoiceItem();
+         testItem.setName("测试商品");
+         testItem.setQuantity(new BigDecimal("1"));
+         testItem.setUnitPrice(new BigDecimal("100.0"));
+         testItem.setAmount(new BigDecimal("100.0"));
+         
+         List<InvoiceItem> items = new ArrayList<>();
+         items.add(testItem);
+         testInvoice.setItems(items);
+         
+         return testInvoice;
+     }
 }
