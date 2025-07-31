@@ -962,6 +962,20 @@ public class RuleEngine {
     }
     
     /**
+     * 获取字段补全规则列表
+     */
+    public List<CompletionRule> getCompletionRules() {
+        return new ArrayList<>(completionRules);
+    }
+    
+    /**
+     * 获取字段验证规则列表
+     */
+    public List<ValidationRule> getValidationRules() {
+        return new ArrayList<>(validationRules);
+    }
+    
+    /**
      * 将CEL表达式返回值转换为可序列化的格式
      * 解决AutoValue_CelUnknownSet等CEL内部对象的序列化问题
      */

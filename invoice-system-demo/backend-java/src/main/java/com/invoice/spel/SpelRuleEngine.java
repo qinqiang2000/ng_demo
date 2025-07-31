@@ -871,4 +871,34 @@ public class SpelRuleEngine {
         completionExecutionLog.clear();
         validationExecutionLog.clear();
     }
+    
+    /**
+     * 获取规则统计信息
+     */
+    public Map<String, Object> getRuleStats() {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("rules_loaded", rulesLoaded);
+        stats.put("completion_rules_count", completionRules.size());
+        stats.put("validation_rules_count", validationRules.size());
+        stats.put("active_completion_rules", completionRules.stream()
+            .mapToInt(rule -> rule.getIsActive() ? 1 : 0).sum());
+        stats.put("active_validation_rules", validationRules.stream()
+            .mapToInt(rule -> rule.getIsActive() ? 1 : 0).sum());
+        
+        return stats;
+    }
+    
+    /**
+     * 获取字段补全规则列表
+     */
+    public List<BusinessRule> getCompletionRules() {
+        return new ArrayList<>(completionRules);
+    }
+    
+    /**
+     * 获取字段验证规则列表
+     */
+    public List<BusinessRule> getValidationRules() {
+        return new ArrayList<>(validationRules);
+    }
 }
