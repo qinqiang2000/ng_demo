@@ -272,31 +272,16 @@ public class CelExpressionEvaluator {
     }
 
     /**
-     * 预处理数字常量，将整数转换为Double格式以匹配金额字段类型
+     * 预处理数字常量，确保类型匹配
+     * 注意：由于 BigDecimal 字段已在对象转换时统一转换为 Double 类型，
+     * 此方法现在只需要返回原始表达式，不需要额外的类型转换处理
      */
     private String preprocessNumericConstants(String expression) {
-        // 匹配与金额相关字段比较的数字常量
-        // 例如: invoice.total_amount > 5000 -> invoice.total_amount > 5000.0
-        Pattern amountComparisonPattern = Pattern.compile(
-                "(\\w*(?:amount|total|tax|net)\\w*)\\s*([><=!]+)\\s*(\\d+)(?!\\.)");
-
-        Matcher matcher = amountComparisonPattern.matcher(expression);
-        StringBuffer result = new StringBuffer();
-
-        while (matcher.find()) {
-            String fieldName = matcher.group(1);
-            String operator = matcher.group(2);
-            String number = matcher.group(3);
-
-            // 将整数转换为Double格式
-            String replacement = fieldName + " " + operator + " " + number + ".0";
-            log.debug("数字常量转换: {} -> {}", matcher.group(0), replacement);
-
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-
-        return result.toString();
+        log.debug("预处理数字常量，原始表达式: {}", expression);
+        // BigDecimal 字段已在 convertValueForCelRecursive 中统一转换为 Double 类型
+        // 因此不需要额外的类型转换处理，直接返回原始表达式
+        log.debug("预处理完成，表达式保持不变: {}", expression);
+        return expression;
     }
 
     /**
@@ -860,15 +845,11 @@ public class CelExpressionEvaluator {
             return value;
         }
 
-        // BigDecimal转换 - 根据实际值的特征判断转换类型
+        // BigDecimal转换 - 统一转换为Double类型，避免与浮点数比较时的类型不匹配
         if (value instanceof java.math.BigDecimal) {
             java.math.BigDecimal decimal = (java.math.BigDecimal) value;
-            // 如果有小数部分，转换为Double；否则转换为Long
-            if (decimal.scale() > 0 && decimal.remainder(java.math.BigDecimal.ONE).compareTo(java.math.BigDecimal.ZERO) != 0) {
-                return decimal.doubleValue();
-            } else {
-                return decimal.longValue();
-            }
+            // 统一转换为Double，确保与CEL表达式中的浮点数比较兼容
+            return decimal.doubleValue();
         }
 
         // 其他数字类型转换
@@ -942,12 +923,26 @@ public class CelExpressionEvaluator {
             try {
                 java.util.Map<?, ?> map = (java.util.Map<?, ?>) value;
                 java.util.Map<String, Object> convertedMap = new java.util.HashMap<>();
+                
+                log.info("🔍 处理Map类型字段: {}, Map大小: {}, 原始内容: {}", fieldName, map.size(), map);
+                
                 for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
-                    String key = String.valueOf(entry.getKey());
-                    String nestedFieldName = fieldName + "." + key;
+                    String originalKey = String.valueOf(entry.getKey());
+                    String nestedFieldName = fieldName + "." + originalKey;
                     Object convertedValue = convertValueForCelRecursive(entry.getValue(), nestedFieldName, visited);
-                    convertedMap.put(key, convertedValue);
+                    
+                    // 对于extensions字段，确保键名使用下划线命名
+                    String finalKey = originalKey;
+                    if ("extensions".equals(fieldName)) {
+                        finalKey = convertCamelToSnake(originalKey);
+                        log.info("🔄 Extensions字段键名转换: {} -> {}", originalKey, finalKey);
+                    }
+                    
+                    convertedMap.put(finalKey, convertedValue);
+                    log.info("📝 Map条目处理: {} -> {} = {}", originalKey, finalKey, convertedValue);
                 }
+                
+                log.info("✅ Map转换完成，字段: {}, 结果: {}", fieldName, convertedMap);
                 return convertedMap;
             } finally {
                 visited.remove(value);

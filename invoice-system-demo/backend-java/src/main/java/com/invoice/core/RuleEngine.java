@@ -726,9 +726,6 @@ public class RuleEngine {
                 continue;
             }
 
-            // 移除每次规则执行前的缓存清除逻辑
-            // 改为在所有规则执行完毕后统一更新缓存
-
             try {
                 // 检查规则是否适用
                 if (rule.getApplyTo() != null && !rule.getApplyTo().trim().isEmpty()) {
@@ -841,6 +838,9 @@ public class RuleEngine {
      * 业务验证
      */
     public ValidationResult validateInvoice(InvoiceDomainObject invoice) {
+        // 清空之前的验证执行日志
+        validationExecutionLog.clear();
+        
         if (!rulesLoaded) {
             loadRules("../shared/config/rules.yaml");
         }
@@ -858,20 +858,49 @@ public class RuleEngine {
             log.info("🔧 开始处理验证规则 - ID: {}, 名称: {}", rule.getId(), rule.getRuleName());
             
             if (!rule.isActive()) {
+                log.info("规则 {} 未激活，跳过", rule.getId());
+                
+                // 记录跳过的日志
+                Map<String, Object> logEntry = new HashMap<>();
+                logEntry.put("type", "validation");
+                logEntry.put("status", "skipped");
+                logEntry.put("rule_id", rule.getId());
+                logEntry.put("rule_name", rule.getRuleName());
+                logEntry.put("reason", "rule_inactive");
+                logEntry.put("message", String.format("规则跳过: %s - 规则未激活", rule.getRuleName()));
+                validationExecutionLog.add(logEntry);
+                
                 continue;
             }
 
             try {
                 // 检查规则是否适用
                 if (rule.getApplyTo() != null && !rule.getApplyTo().trim().isEmpty()) {
+                    log.info("检查规则 {} 适用条件: {}", rule.getId(), rule.getApplyTo());
                     Object applyResult = expressionEvaluator.evaluate(rule.getApplyTo(), context);
+                    log.info("规则 {} 适用条件结果: {}", rule.getId(), applyResult);
                     if (!isTrue(applyResult)) {
+                        log.info("规则 {} 适用条件不满足，跳过", rule.getId());
+                        
+                        // 记录跳过的日志
+                        Map<String, Object> logEntry = new HashMap<>();
+                        logEntry.put("type", "validation");
+                        logEntry.put("status", "skipped");
+                        logEntry.put("rule_id", rule.getId());
+                        logEntry.put("rule_name", rule.getRuleName());
+                        logEntry.put("reason", "condition_not_met");
+                        logEntry.put("condition", rule.getApplyTo());
+                        logEntry.put("message", String.format("规则跳过: %s - 条件不满足: %s", rule.getRuleName(), rule.getApplyTo()));
+                        validationExecutionLog.add(logEntry);
+                        
                         continue;
                     }
                 }
 
                 // 执行验证规则
+                log.info("执行规则 {} 表达式: {}", rule.getId(), rule.getRuleExpression());
                 Object validationResult = expressionEvaluator.evaluate(rule.getRuleExpression(), context);
+                log.info("规则 {} 表达式结果: {}", rule.getId(), validationResult);
 
                 if (!isTrue(validationResult)) {
                     String errorMessage = rule.getErrorMessage() != null ? rule.getErrorMessage()
@@ -879,19 +908,55 @@ public class RuleEngine {
                     result.getErrors().add(errorMessage);
 
                     log.debug("验证失败: {} - {}", rule.getId(), errorMessage);
+                    
+                    // 记录验证失败的日志
+                    Map<String, Object> logEntry = new HashMap<>();
+                    logEntry.put("type", "validation");
+                    logEntry.put("status", "failed");
+                    logEntry.put("rule_id", rule.getId());
+                    logEntry.put("rule_name", rule.getRuleName());
+                    logEntry.put("expression", rule.getRuleExpression());
+                    logEntry.put("result", convertToSerializableValue(validationResult));
+                    logEntry.put("error_message", errorMessage);
+                    logEntry.put("message", String.format("验证失败: %s - %s", rule.getRuleName(), errorMessage));
+                    validationExecutionLog.add(logEntry);
+                } else {
+                    log.info("验证通过: {} - {}", rule.getId(), rule.getRuleName());
+                    
+                    // 记录验证通过的日志
+                    Map<String, Object> logEntry = new HashMap<>();
+                    logEntry.put("type", "validation");
+                    logEntry.put("status", "passed");
+                    logEntry.put("rule_id", rule.getId());
+                    logEntry.put("rule_name", rule.getRuleName());
+                    logEntry.put("expression", rule.getRuleExpression());
+                    logEntry.put("result", convertToSerializableValue(validationResult));
+                    logEntry.put("message", String.format("验证通过: %s", rule.getRuleName()));
+                    validationExecutionLog.add(logEntry);
                 }
 
             } catch (Exception e) {
                 log.warn("验证规则执行失败: {} - {}", rule.getId(), e.getMessage());
                 result.getWarnings().add("规则执行异常: " + rule.getRuleName());
+                
+                // 记录执行异常的日志
+                Map<String, Object> logEntry = new HashMap<>();
+                logEntry.put("type", "validation");
+                logEntry.put("status", "error");
+                logEntry.put("rule_id", rule.getId());
+                logEntry.put("rule_name", rule.getRuleName());
+                logEntry.put("expression", rule.getRuleExpression());
+                logEntry.put("error", e.getMessage());
+                logEntry.put("message", String.format("CEL验证规则执行异常: %s - %s", rule.getRuleName(), e.getMessage()));
+                validationExecutionLog.add(logEntry);
             }
         }
 
         result.setValid(result.getErrors().isEmpty());
         result.setSummary(result.isValid() ? "所有验证规则通过" : String.format("发现 %d 个错误", result.getErrors().size()));
 
-        log.info("业务验证完成，发票号: {}，结果: {}",
-                invoice.getInvoiceNumber(), result.getSummary());
+        log.info("业务验证完成，发票号: {}，结果: {}，执行日志数: {}",
+                invoice.getInvoiceNumber(), result.getSummary(), validationExecutionLog.size());
 
         // 保留缓存，让getOrCreateContext智能判断是否需要重新创建
         

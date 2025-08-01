@@ -1,4 +1,0 @@
-{
-  "data": "<Invoice><Header><InvoiceNumber>INV-2024-002</InvoiceNumber><IssueDate>2024-01-15</IssueDate><DueDate>2024-02-15</DueDate></Header><Supplier><Name>Small Business Ltd</Name><TaxID>123456789</TaxID><Address>123 Small St, Small City</Address></Supplier><Customer><Name>Local Corp</Name><TaxID>987654321</TaxID><Address>456 Local Ave, Local Town</Address></Customer><Items><Item><Description>Small Service</Description><Quantity>1</Quantity><UnitPrice>3000.00</UnitPrice><TotalPrice>3000.00</TotalPrice></Item></Items><Summary><SubTotal>3000.00</SubTotal><TaxAmount>0.00</TaxAmount><TotalAmount>3000.00</TotalAmount></Summary></Invoice>",
-  "data_type": "xml"
-}
