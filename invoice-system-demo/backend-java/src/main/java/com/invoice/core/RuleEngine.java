@@ -303,79 +303,6 @@ public class RuleEngine {
         return anySuccess;
     }
 
-    private boolean setItemsArrayField(InvoiceDomainObject invoice, String fieldPath, Object value, String ruleName) {
-        log.info("setItemsArrayField调用: fieldPath='{}', value='{}'", fieldPath, value);
-
-        // 提取字段名（去掉items[].前缀）
-        String itemField = fieldPath.replace("items[].", "");
-        log.info("提取的item字段名: {}", itemField);
-
-        // 检查是否有items
-        if (invoice.getItems() == null || invoice.getItems().isEmpty()) {
-            log.warn("发票没有items或items为空");
-            return false;
-        }
-
-        // 为每个item设置字段值
-        boolean anySuccess = false;
-        for (int i = 0; i < invoice.getItems().size(); i++) {
-            com.invoice.domain.InvoiceItem item = invoice.getItems().get(i);
-            log.info("处理第 {} 个item", i + 1);
-
-            try {
-                boolean success = setItemField(item, itemField, value);
-                if (success) {
-                    anySuccess = true;
-                    log.info("成功设置items[{}].{} = {}", i, itemField, value);
-
-                    // 记录每个item的成功日志，使用具体的数组索引
-                    Map<String, Object> logEntry = new HashMap<>();
-                    logEntry.put("type", "completion");
-                    logEntry.put("status", "success");
-                    logEntry.put("rule_name", ruleName);
-                    logEntry.put("target_field", fieldPath);
-                    logEntry.put("actual_field_path", String.format("items[%d].%s", i, itemField));
-                    logEntry.put("item_index", i);
-                    logEntry.put("value", convertToSerializableValue(value));
-                    logEntry.put("message", String.format("字段补全成功: %s - 设置 items[%d].%s = %s",
-                            ruleName, i, itemField, value));
-                    completionExecutionLog.add(logEntry);
-                } else {
-                    log.warn("设置items[{}].{}失败", i, itemField);
-
-                    // 记录每个item的失败日志
-                    Map<String, Object> logEntry = new HashMap<>();
-                    logEntry.put("type", "completion");
-                    logEntry.put("status", "failed");
-                    logEntry.put("rule_name", ruleName);
-                    logEntry.put("target_field", fieldPath);
-                    logEntry.put("actual_field_path", String.format("items[%d].%s", i, itemField));
-                    logEntry.put("item_index", i);
-                    logEntry.put("message", String.format("字段补全失败: %s - 无法设置字段 items[%d].%s",
-                            ruleName, i, itemField));
-                    completionExecutionLog.add(logEntry);
-                }
-            } catch (Exception e) {
-                log.warn("设置items[{}].{}时发生异常: {}", i, itemField, e.getMessage());
-
-                // 记录每个item的异常日志
-                Map<String, Object> logEntry = new HashMap<>();
-                logEntry.put("type", "completion");
-                logEntry.put("status", "error");
-                logEntry.put("rule_name", ruleName);
-                logEntry.put("target_field", fieldPath);
-                logEntry.put("actual_field_path", String.format("items[%d].%s", i, itemField));
-                logEntry.put("item_index", i);
-                logEntry.put("error", e.getMessage());
-                logEntry.put("message", String.format("字段补全错误: %s - items[%d].%s: %s",
-                        ruleName, i, itemField, e.getMessage()));
-                completionExecutionLog.add(logEntry);
-            }
-        }
-
-        return anySuccess;
-    }
-
     /**
      * 设置单个item字段
      */
@@ -1009,6 +936,7 @@ public class RuleEngine {
     /**
      * 设置字段值
      * 使用 SpelFieldSetter 提供通用的、基于反射的字段设置功能，消除硬编码
+     * 注意：items[] 字段由主逻辑中的 processItemsArrayRule 方法专门处理，此方法不处理 items[] 字段
      */
     private boolean setFieldValue(InvoiceDomainObject invoice, String fieldPath, Object value) {
         log.info("setFieldValue调用: fieldPath='{}', value='{}'", fieldPath, value);
@@ -1018,10 +946,11 @@ public class RuleEngine {
         }
 
         try {
-            // 处理items[]数组字段 - 这种特殊语法需要单独处理
+            // items[] 字段由主逻辑中的 processItemsArrayRule 方法专门处理
+            // 此方法不处理 items[] 字段，避免重复逻辑
             if (fieldPath.startsWith("items[].")) {
-                log.info("处理items[]数组字段: {}", fieldPath);
-                return setItemsArrayField(invoice, fieldPath, value, "未知规则");
+                log.warn("items[] 字段应由 processItemsArrayRule 方法处理，不应调用此方法: {}", fieldPath);
+                return false;
             }
             
             // 转换字段路径：去掉 'invoice.' 前缀，因为 SpelFieldSetter 期望相对路径
@@ -1031,7 +960,7 @@ public class RuleEngine {
                 log.debug("转换字段路径: {} -> {}", fieldPath, relativePath);
             }
             
-            // 使用 SpelFieldSetter 处理所有其他字段路径
+            // 使用 SpelFieldSetter 处理所有非 items[] 字段路径
             // SpelFieldSetter 支持:
             // - 普通字段: taxAmount, currency 等
             // - 嵌套对象字段: supplier.name, customer.address 等
