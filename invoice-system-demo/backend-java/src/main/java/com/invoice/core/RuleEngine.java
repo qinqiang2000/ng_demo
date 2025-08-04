@@ -19,11 +19,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 规则引擎
+ * CEL规则引擎
  * 
- * Java 版本的 Python 规则引擎
+ * 基于Google CEL-Java标准库的规则引擎实现
  * 支持字段补全和业务验证规则
- * 使用Google CEL-Java标准库进行表达式求值
+ * 使用CEL表达式进行动态计算和条件判断
  */
 @Component
 @RequiredArgsConstructor
@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 public class RuleEngine {
 
     private final CelExpressionEvaluator expressionEvaluator;
-    private final SpelFieldSetter spelFieldSetter;
+    private final SpelFieldSetter fieldSetter; // 通用字段设置器，虽然底层使用SpEL技术，但在CEL引擎中作为字段设置工具
 
     private List<CompletionRule> completionRules = new ArrayList<>();
     private List<ValidationRule> validationRules = new ArrayList<>();
@@ -769,7 +769,7 @@ public class RuleEngine {
         validationExecutionLog.clear();
         
         if (!rulesLoaded) {
-            loadRules("../shared/config/rules.yaml");
+            loadRules("../shared/config/ru[les.yaml");
         }
 
         // 移除强制缓存清除，让getOrCreateContext智能判断是否需要重新创建
@@ -935,8 +935,10 @@ public class RuleEngine {
 
     /**
      * 设置字段值
-     * 使用 SpelFieldSetter 提供通用的、基于反射的字段设置功能，消除硬编码
+     * 使用通用的字段设置器提供基于反射的字段设置功能，消除硬编码
      * 注意：items[] 字段由主逻辑中的 processItemsArrayRule 方法专门处理，此方法不处理 items[] 字段
+     * 
+     * 本方法在CEL规则引擎中被调用，用于设置CEL表达式计算出的字段值
      */
     private boolean setFieldValue(InvoiceDomainObject invoice, String fieldPath, Object value) {
         log.info("setFieldValue调用: fieldPath='{}', value='{}'", fieldPath, value);
@@ -953,20 +955,20 @@ public class RuleEngine {
                 return false;
             }
             
-            // 转换字段路径：去掉 'invoice.' 前缀，因为 SpelFieldSetter 期望相对路径
+            // 转换字段路径：去掉 'invoice.' 前缀，因为字段设置器期望相对路径
             String relativePath = fieldPath;
             if (fieldPath.startsWith("invoice.")) {
                 relativePath = fieldPath.substring(8); // 去掉 "invoice." 前缀
                 log.debug("转换字段路径: {} -> {}", fieldPath, relativePath);
             }
             
-            // 使用 SpelFieldSetter 处理所有非 items[] 字段路径
-            // SpelFieldSetter 支持:
+            // 使用字段设置器处理所有非 items[] 字段路径
+            // 字段设置器支持:
             // - 普通字段: taxAmount, currency 等
             // - 嵌套对象字段: supplier.name, customer.address 等
             // - Map字段: extensions.supplier_category 等
             // - 投影表达式: items.![unitPrice] 等
-            boolean result = spelFieldSetter.setFieldValue(invoice, relativePath, value);
+            boolean result = fieldSetter.setFieldValue(invoice, relativePath, value);
             
             if (result) {
                 log.debug("成功设置字段: {} = {}", fieldPath, value);
